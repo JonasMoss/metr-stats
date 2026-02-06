@@ -1,0 +1,13 @@
+*.parquet
+*.csv
+*.pkl
+*.pickle
+out/
+out_stan/
+out_r/
+out_probs/
+out_horizon/
+out_isotonic/
+out_stan_time/
+out_time_model/
+out_*/

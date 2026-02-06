@@ -1,0 +1,195 @@
+#LyX 2.4 created this file. For more info see https://www.lyx.org/
+\lyxformat 620
+\begin_document
+\begin_header
+\save_transient_properties true
+\origin unavailable
+\textclass article
+\use_default_options true
+\maintain_unincluded_children no
+\language american
+\language_package default
+\inputencoding utf8
+\fontencoding auto
+\font_roman "default" "default"
+\font_sans "default" "default"
+\font_typewriter "default" "default"
+\font_math "auto" "auto"
+\font_default_family default
+\use_non_tex_fonts false
+\font_sc false
+\font_roman_osf false
+\font_sans_osf false
+\font_typewriter_osf false
+\font_sf_scale 100 100
+\font_tt_scale 100 100
+\use_microtype false
+\use_dash_ligatures true
+\graphics default
+\default_output_format default
+\output_sync 0
+\bibtex_command default
+\index_command default
+\float_placement class
+\float_alignment class
+\paperfontsize default
+\use_hyperref false
+\papersize default
+\use_geometry false
+\use_package amsmath 1
+\use_package amssymb 1
+\use_package cancel 1
+\use_package esint 1
+\use_package mathdots 1
+\use_package mathtools 1
+\use_package mhchem 1
+\use_package stackrel 1
+\use_package stmaryrd 1
+\use_package undertilde 1
+\cite_engine basic
+\cite_engine_type default
+\use_bibtopic false
+\use_indices false
+\paperorientation portrait
+\suppress_date false
+\justification true
+\use_refstyle 1
+\use_formatted_ref 0
+\use_minted 0
+\use_lineno 0
+\index Index
+\shortcut idx
+\color #008080
+\end_index
+\secnumdepth 3
+\tocdepth 3
+\paragraph_separation indent
+\paragraph_indentation default
+\is_math_indent 0
+\math_numbering_side default
+\quotes_style english
+\dynamic_quotes 0
+\papercolumns 1
+\papersides 1
+\paperpagestyle default
+\tablestyle default
+\tracking_changes false
+\output_changes false
+\change_bars false
+\postpone_fragile_content true
+\html_math_output 0
+\html_css_as_file 0
+\html_be_strict false
+\docbook_table_output 0
+\docbook_mathml_prefix 1
+\end_header
+
+\begin_body
+
+\begin_layout Title
+METR data modelling
+\end_layout
+
+\begin_layout Author
+Jonas Moss
+\end_layout
+
+\begin_layout Section
+The model
+\end_layout
+
+\begin_layout Standard
+Let 
+\begin_inset Formula $i,j,k$
+\end_inset
+
+ be the index of the model,
+ the task,
+ and the independent run of the task.
+ The binary variables 
+\begin_inset Formula $Y_{ijk}$
+\end_inset
+
+ indicate task success.
+ We need to model the probability of task completion.
+ Our 2PL model family looks like
+\begin_inset Formula 
+\[
+P(Y_{ijk}=1)=\sigma[\beta_{j}(\theta_{i}-\delta_{j})]
+\]
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Enumerate
+\begin_inset Formula $\delta_{j}$
+\end_inset
+
+:
+ The item difficulty,
+\end_layout
+
+\begin_layout Enumerate
+\begin_inset Formula $\beta_{j}$
+\end_inset
+
+:
+ task discrimination,
+\end_layout
+
+\begin_layout Enumerate
+\begin_inset Formula $\theta_{i}$
+\end_inset
+
+:
+ model ability.
+\end_layout
+
+\begin_layout Standard
+From these we get a posterior for the relevant parameters.
+ Now we have time horizons 
+\begin_inset Formula $t_{j}$
+\end_inset
+
+ for each task and release dates 
+\begin_inset Formula $d_{i}$
+\end_inset
+
+ for the models as well.
+ We treat those as deterministic.
+ We'd like to estimate
+\begin_inset Formula 
+\[
+p_{i}(t)=P(\text{model }i\text{ succeeds on task of length }t).
+\]
+
+\end_inset
+
+Suppose 
+\begin_inset Formula $\beta,\theta,\delta$
+\end_inset
+
+ are known first of course.
+ We need to map 
+\begin_inset Formula $t_{j}$
+\end_inset
+
+ to 
+\begin_inset Formula $(\beta_{j},\delta_{j})$
+\end_inset
+
+ then.
+ The problem is that we do not know this mapping or if it even exists in a reasonable way 
+\begin_inset Formula $\beta_{j},\delta_{j}$
+\end_inset
+
+.
+ It would be possible to connect these,
+ maybe,
+ by having more participants and potentially censored time-to-completion distributions.
+\end_layout
+
+\end_body
+\end_document
