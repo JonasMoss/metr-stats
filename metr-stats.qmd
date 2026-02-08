@@ -1,0 +1,13 @@
+---
+title: "Bayesian model comparison for AI capability trajectories"
+format:
+  html:
+    toc: true
+execute:
+  enabled: false
+---
+
+{{< include metr-stats.md >}}
+
+{{< include blog/_generated/one_month_horizon.md >}}
+

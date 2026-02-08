@@ -172,24 +172,6 @@ python analysis/prob_vs_length.py
 
 This expects a task-level Stan fit (items are `task_id`) so `analysis/out_stan/items.csv` contains both `mean_a` and `mean_b` for each task.
 
-## Monotone horizons (PAVA / isotonic)
+## Note
 
-If you want a monotone (non-increasing) curve of success probability vs task length, `analysis/monotone_horizon.py` fits weighted isotonic (PAVA) curves and extracts a 50% horizon (with linear interpolation between steps when needed).
-
-It does this in two ways:
-
-- Option A: isotonic fit to observed per-task success rates `s_ij/n_ij`
-- Option B: isotonic fit to 2PL plug-in probabilities `logit^{-1}(a_j(theta_i-b_j))`
-
-Run:
-
-```bash
-python analysis/monotone_horizon.py --theta-csv analysis/out_stan_taskid/theta.csv --items-csv analysis/out_stan_taskid/items.csv
-```
-
-### Identifiability / anchors
-
-2PL is only identifiable up to an affine transform of `theta` and `b`, so the script anchors two models’ abilities:
-
-- default: lowest pass-rate model has `theta=-1`, highest pass-rate model has `theta=+1`
-- override with `--anchor-low MODEL --anchor-high MODEL --theta-low X --theta-high Y`
+The isotonic / PAVA “monotone horizons” experiment was deleted in the main refactor; this folder is for legacy reference only.

@@ -1,0 +1,23 @@
+__pycache__/
+*.pyc
+.python-version
+
+# Editor cruft
+*~
+\#*\#
+
+# Artifacts (fits, figures, temporary outputs)
+outputs/
+
+# Quarto artifacts
+.quarto/
+*_files/
+*.quarto_ipynb
+appendix/assets/
+appendix/_generated/
+appendix/*.html
+appendix/diagnostics_files/
+
+# Blog artifacts
+blog/_generated/
+metr-stats.html

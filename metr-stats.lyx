@@ -94,6 +94,278 @@ METR data modelling
 Jonas Moss
 \end_layout
 
+\begin_layout Itemize
+Goal:
+ Modeling of METR trajectory.
+\end_layout
+
+\begin_layout Itemize
+Method:
+ 2PL with direct modeling of everything.
+ 
+\end_layout
+
+\begin_layout Itemize
+The basic 2PL:
+ What and why
+\end_layout
+
+\begin_layout Itemize
+Adding dates to stuff.
+\end_layout
+
+\begin_layout Itemize
+Potential bla bla bla?
+\end_layout
+
+\begin_layout Section
+Introduction
+\end_layout
+
+\begin_layout Standard
+\begin_inset Quotes eld
+\end_inset
+
+We want to forecast when AI systems will be able to do tasks of difficulty X,
+ here's the principled measurement model for doing that,
+ and it happens to also give us an interpretable scale as a bonus.
+\begin_inset Quotes erd
+\end_inset
+
+
+\end_layout
+
+\begin_layout Standard
+One of the cool feautres of the METR presention is how 
+\begin_inset Quotes eld
+\end_inset
+
+latent ability
+\begin_inset Quotes erd
+\end_inset
+
+ is transformed into a natural scale.
+ Say IQ measures intelligence,
+ but is arbitrarily scaled to have a mean of 
+\begin_inset Formula $100$
+\end_inset
+
+ and a standard deviation of 
+\begin_inset Formula $15$
+\end_inset
+
+,
+ and its not straight-forward to say something like 
+\begin_inset Quotes eld
+\end_inset
+
+intelligence responds linearly to compute input
+\begin_inset Quotes erd
+\end_inset
+
+,
+ as,
+ well,
+ that depends on how we actually measure it.
+ (This,
+ of course,
+ also holds for stuff like Sam Altman's claim that LLM capabilities respond logarithmically to compute.
+ Yes,
+ you can probably claim that about a specific measurement such as perplexity,
+ but generic capabilities is another story.) Epoch also has this problem,
+ where GPT-4 is set to 
+\begin_inset Formula $100$
+\end_inset
+
+ and Sonnet 3.7 is set to 
+\begin_inset Formula $130$
+\end_inset
+
+.
+ What does an increase of 
+\begin_inset Formula $30$
+\end_inset
+
+ more points mean?
+ The same as the capability difference between GPT-4 and Sonnet 3.7?
+ Not really.
+ 
+\end_layout
+
+\begin_layout Standard
+This leads us into the natural measurement model for METR data,
+ the 2-parameter logistic model.
+ Let 
+\begin_inset Formula $i$
+\end_inset
+
+ index the models,
+ 
+\begin_inset Formula $j$
+\end_inset
+
+ index tasks,
+ and 
+\begin_inset Formula $k$
+\end_inset
+
+ index a potential repeat of a task.
+ If 
+\begin_inset Formula $Y_{ijk}=1$
+\end_inset
+
+ when model 
+\begin_inset Formula $i$
+\end_inset
+
+ succeeds on the 
+\begin_inset Formula $k$
+\end_inset
+
+th repeat of task 
+\begin_inset Formula $j$
+\end_inset
+
+,
+ then we model 
+\begin_inset Formula 
+\[
+P(Y_{ijk}=1)=\sigma[\beta_{j}(\theta_{i}-\delta_{j})],
+\]
+
+\end_inset
+
+where 
+\begin_inset Formula $\sigma=1/(1+e^{-x})$
+\end_inset
+
+ is the logistic,
+ 
+\begin_inset Formula $\delta_{j}$
+\end_inset
+
+ is the item difficulty,
+ 
+\begin_inset Formula $\theta_{i}$
+\end_inset
+
+ is model ability,
+ and 
+\begin_inset Formula $\beta_{j}>0$
+\end_inset
+
+ is the task discrimination.
+ 
+\end_layout
+
+\begin_layout Standard
+The problem right now is that 
+\begin_inset Formula $\theta_{i}$
+\end_inset
+
+ isn't directly interoperable,
+ just as before.
+ The phenomenal thing about METR plots is associating 
+\begin_inset Formula $\delta_{j}$
+\end_inset
+
+ with the 
+\emph on
+human time
+\emph default
+ of the 
+\begin_inset Formula $j$
+\end_inset
+
+th task,
+ which allows us to anchor the difficulties,
+ and by consequence,
+ the model abilities 
+\begin_inset Formula $\theta_{i}$
+\end_inset
+
+.
+ The second step is associating the model abilities with their release dates 
+\begin_inset Formula $d_{i}$
+\end_inset
+
+.
+\end_layout
+
+\begin_layout Standard
+Concretely,
+ let's do the following modeling steps:
+\begin_inset Formula 
+\begin{eqnarray*}
+\theta_{i} & = & a_{\theta}+b_{\theta}\log d_{i}+u_{i},\\
+\delta_{j} & = & a_{\delta}+b_{\delta}\log t_{j}+v_{j}.
+\end{eqnarray*}
+
+\end_inset
+
+Here 
+\begin_inset Formula $u_{i},v_{i}$
+\end_inset
+
+ are residuals that can account for some off-slope behavior.
+ 
+\end_layout
+
+\begin_layout Standard
+(This is one possible model,
+ and 
+\emph on
+both
+\emph default
+ models matter.
+ The model for 
+\begin_inset Formula $\delta_{j}$
+\end_inset
+
+ tells us the correct scaling of the difficulties,
+ the model for 
+\begin_inset Formula $\theta_{i}$
+\end_inset
+
+ the correct scaling for the dates,
+ and both should be verified or checked in one way or another.)
+\end_layout
+
+\begin_layout Section
+Introduction
+\end_layout
+
+\begin_layout Standard
+Short overview:
+ METR trend extrapolation is important.
+ The way METR does it in their paper good but somewhat ad hoc.
+ Here's a principled alternative that doubles down on item response theory.
+ 
+\end_layout
+
+\begin_layout Standard
+Lets have a look at an idealized variant of the METR data,
+ which looks roughly like this:
+\end_layout
+
+\begin_layout Standard
+\begin_inset Formula 
+\[
+\left[\begin{array}{ccccccc}
+\text{Model} & \text{Task ID} & \text{Success} & \text{Attempts} & \text{Date} & \text{Family} & \text{Human time}\\
+\text{o3} & 1 & 3 & 4 & 2025-04-16 & a\\
+\text{Opus 4} & 2 & 3 & 4 & 2025-05-22 & b\\
+\vdots\\
+\text{Opus 3} & 3 & 3 & 4 & 2024-03-04 & c\\
+\text{o1} & 4 & 3 & 4 & 2024-12-05 & d
+\end{array}\right]
+\]
+
+\end_inset
+
+So there are a bunch of (model,task) pairs that have have.
+\end_layout
+
 \begin_layout Section
 2PL model
 \end_layout
@@ -115,38 +387,88 @@ Let
  Our 2PL model family looks like
 \begin_inset Formula 
 \[
-P(Y_{ijk}=1)=\sigma[\beta_{j}(\theta_{i}-\delta_{j})]
+P(Y_{ijk}=1)=\sigma[\beta_{j}(\theta_{i}-\delta_{j})],
 \]
 
 \end_inset
 
+where 
+\begin_inset Formula $\sigma=1/(1+e^{-x})$
+\end_inset
 
-\end_layout
-
-\begin_layout Enumerate
+ is the logistic,
+ 
 \begin_inset Formula $\delta_{j}$
 \end_inset
 
-:
- The item difficulty,
-\end_layout
-
-\begin_layout Enumerate
-\begin_inset Formula $\beta_{j}$
-\end_inset
-
-:
- task discrimination,
-\end_layout
-
-\begin_layout Enumerate
+ is the item difficulty,
+ 
 \begin_inset Formula $\theta_{i}$
 \end_inset
 
-:
- model ability.
+ is model ability,
+ and 
+\begin_inset Formula $\beta_{j}>0$
+\end_inset
+
+ is the task discrimination.
+ 
 \end_layout
 
+\begin_layout Standard
+This is called a 2-parameter logistic model (2PL) in item response theory.
+\end_layout
+
+\begin_layout Itemize
+The ability or skill parameters 
+\begin_inset Formula $\theta_{i}$
+\end_inset
+
+ for model 
+\begin_inset Formula $i$
+\end_inset
+
+ (e.g.,
+ GPT-4o) is small if the model is a poor and large if its good.
+\end_layout
+
+\begin_layout Itemize
+If the discrimination parameter is large:
+ A positive difference 
+\begin_inset Formula $\theta_{i}-\delta_{j}$
+\end_inset
+
+ will cause the resulting probability to be large as well,
+ a negative difference will cause the resulting probability to be small.
+ 
+\end_layout
+
+\begin_deeper
+\begin_layout Itemize
+Its easiest to think of this from a human perspective.
+ Lets say you have a have a high school calculus problem such as 
+\begin_inset Quotes eld
+\end_inset
+
+what is the derivative of 
+\begin_inset Formula $\sin x$
+\end_inset
+
+
+\begin_inset Quotes erd
+\end_inset
+
+.
+ The ok students will virtually always know the answers to this problem,
+ i.e.,
+ the students that paid attention at all.
+ The other students will almost always fail.
+ There is little room for randomness,
+ so the discrimination is large.
+ 
+\end_layout
+
+\end_deeper
 \begin_layout Standard
 From these we get a posterior for the relevant parameters.
  Now we have time horizons 
@@ -221,6 +543,21 @@ something
 \end_inset
 
  behaving erratically.
+\end_layout
+
+\begin_layout Section
+More modelling
+\end_layout
+
+\begin_layout Standard
+\begin_inset Formula 
+\begin{eqnarray*}
+\theta_{i} & = & f(d_{i})+\epsilon_{i}
+\end{eqnarray*}
+
+\end_inset
+
+
 \end_layout
 
 \begin_layout Section

@@ -11,18 +11,21 @@ import yaml
 
 
 def parse_args() -> argparse.Namespace:
+    here = Path(__file__).resolve()
+    default_raw = here.parent
+    default_out = default_raw.parent / "data"
     parser = argparse.ArgumentParser(description="Build easy-to-load artifacts from data_raw/*.")
     parser.add_argument(
         "--raw-dir",
         type=Path,
-        default=Path("data_raw"),
-        help="Directory containing raw inputs (default: data_raw).",
+        default=default_raw,
+        help="Directory containing raw inputs (default: this script's directory).",
     )
     parser.add_argument(
         "--out-dir",
         type=Path,
-        default=Path("data"),
-        help="Directory to write processed outputs (default: data).",
+        default=default_out,
+        help="Directory to write processed outputs (default: repo_root/data).",
     )
     parser.add_argument(
         "--runs-in",
