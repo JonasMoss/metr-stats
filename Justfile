@@ -96,6 +96,9 @@ compare-horizon-p50:
 blog-prep:
   python scripts/one_month_horizon.py --skip-missing --max-year 2200
 
+blog-prep-125y:
+  python scripts/one_month_horizon.py --skip-missing --max-year 2200 --threshold-days 45656 --threshold-label "125 years" --out-csv blog/_generated/125y_horizon.csv --out-md blog/_generated/125y_horizon.md
+
 blog-render:
   mkdir -p outputs/.xdg_cache outputs/.xdg_data outputs/.deno
   XDG_CACHE_HOME=$PWD/outputs/.xdg_cache XDG_DATA_HOME=$PWD/outputs/.xdg_data DENO_DIR=$PWD/outputs/.deno quarto render metr-stats.qmd

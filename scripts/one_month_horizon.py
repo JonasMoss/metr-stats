@@ -47,6 +47,18 @@ def parse_args() -> argparse.Namespace:
         default=2200,
         help="Treat crossings after Dec 31 of this year as 'not reached' (default: 2200).",
     )
+    p.add_argument(
+        "--threshold-days",
+        type=float,
+        default=30.0,
+        help="Horizon threshold in days (default: 30 = 1 month).",
+    )
+    p.add_argument(
+        "--threshold-label",
+        type=str,
+        default=None,
+        help="Human-readable label for the threshold (auto-derived if omitted).",
+    )
     p.add_argument("--out-csv", type=Path, default=Path("blog/_generated/one_month_horizon.csv"))
     p.add_argument("--out-md", type=Path, default=Path("blog/_generated/one_month_horizon.md"))
     p.add_argument(
@@ -242,8 +254,25 @@ def main() -> None:
     args.out_md.parent.mkdir(parents=True, exist_ok=True)
 
     specs = [s.strip() for s in args.specs.split(",") if s.strip()]
-    thr_hours = 30.0 * 24.0  # 1 month = 30 days
+    thr_hours = args.threshold_days * 24.0
     target_logt = float(np.log(thr_hours))
+
+    # Human-readable label for the markdown output.
+    if args.threshold_label is not None:
+        thr_label = args.threshold_label
+    else:
+        days = args.threshold_days
+        if abs(days - 30.0) < 0.1:
+            thr_label = "1 month"
+        elif days < 1:
+            thr_label = f"{days * 24:.0f} hours"
+        elif days < 60:
+            thr_label = f"{days:.0f} days"
+        elif days < 365.25:
+            thr_label = f"{days / 30:.0f} months"
+        else:
+            yrs = days / 365.25
+            thr_label = f"{yrs:.0f} years" if yrs == int(yrs) else f"{yrs:.1f} years"
 
     release = load_release_dates(args.benchmark_yaml)
 
@@ -422,11 +451,12 @@ def main() -> None:
 
     # Blog-friendly markdown
     md_lines: list[str] = []
-    md_lines.append("## When do we hit a 1-month horizon?")
+    md_lines.append(f"## When do we hit a {thr_label} horizon?")
     md_lines.append("")
     md_lines.append(
-        f"Here, “1 month” means **30 days** (720 hours). We report the predicted **release date** when the *trend-based* "
-        f"**t{int(round(100*args.p))} horizon** reaches 1 month, using the **{args.kind}** horizon definition."
+        f"Threshold: **{thr_label}** ({args.threshold_days:.0f} days = {thr_hours:.0f} hours). "
+        f"We report the predicted **release date** when the *trend-based* "
+        f"**t{int(round(100*args.p))} horizon** reaches {thr_label}, using the **{args.kind}** horizon definition."
     )
     md_lines.append(f"`P(cross)` is the posterior probability of crossing **by {int(args.max_year)}-12-31**.")
     md_lines.append("")
