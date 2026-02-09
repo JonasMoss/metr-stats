@@ -47,7 +47,7 @@ transformed parameters {
 
   // enforce convex quadratic term
   gamma = gamma_raw;
-  gamma[2] = fabs(gamma_raw[2]);
+  gamma[2] = abs(gamma_raw[2]);
 
   {
     int pos;

@@ -66,6 +66,9 @@ figs-blog-log1p:
 figs-blog-xpow:
   python scripts/make_figures.py --spec time_irt__theta_xpow --label-preset blog
 
+figs-blog-quadratic-pos:
+  python scripts/make_figures.py --spec time_irt__theta_quadratic_pos --label-preset blog
+
 figs-blog-t50-logistic:
   python scripts/make_figures.py --spec time_irt__theta_t50_logistic --label-preset blog
 
@@ -81,11 +84,23 @@ diag-linear:
 diag-quadratic:
   python scripts/diagnostics.py --spec time_irt__theta_quadratic
 
+diag-quadratic-pos:
+  python scripts/diagnostics.py --spec time_irt__theta_quadratic_pos
+
+diag-xpow:
+  python scripts/diagnostics.py --spec time_irt__theta_xpow
+
+diag-t50-logistic:
+  python scripts/diagnostics.py --spec time_irt__theta_t50_logistic
+
 diag-singularity:
   python scripts/diagnostics.py --spec time_irt__theta_singularity
 
 diag-singularity-nolinear:
   python scripts/diagnostics.py --spec time_irt__theta_singularity_nolinear
+
+# Regenerate all blog-relevant figure CSVs (including theta_trend_grid.csv).
+figs-all-blog: figs-blog-linear figs-blog-quadratic figs-blog-xpow figs-blog-t50-logistic
 
 compare-linear-quadratic:
   python scripts/compare_runs.py --specs time_irt__theta_linear,time_irt__theta_quadratic --outdir outputs/compare_trends

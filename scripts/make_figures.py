@@ -801,6 +801,12 @@ def main() -> None:
         label="model θ (median; 10–90%)",
     )
     theta_grid_q10, theta_grid_q50, theta_grid_q90 = summarize_draws(theta_grid)
+    pd.DataFrame({
+        "date": date_grid,
+        "theta_q10": theta_grid_q10,
+        "theta_q50": theta_grid_q50,
+        "theta_q90": theta_grid_q90,
+    }).to_csv(args.outdir / "theta_trend_grid.csv", index=False)
     ax.plot(date_grid, theta_grid_q50, color="C0", linewidth=2, label="θ trend (date → θ)")
     ax.fill_between(date_grid, theta_grid_q10, theta_grid_q90, color="C0", alpha=0.15)
     ax.set_xlabel("Release date")
