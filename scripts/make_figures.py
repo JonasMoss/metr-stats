@@ -349,9 +349,9 @@ def horizon_hours_typical(
     return np.exp(z)
 
 
-def summarize_draws(arr: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    q10, q50, q90 = np.quantile(arr, [0.10, 0.50, 0.90], axis=0)
-    return q10, q50, q90
+def summarize_draws(arr: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    q025, q10, q50, q90, q975 = np.quantile(arr, [0.025, 0.10, 0.50, 0.90, 0.975], axis=0)
+    return q025, q10, q50, q90, q975
 
 
 def main() -> None:
@@ -600,14 +600,16 @@ def main() -> None:
     else:
         raise SystemExit(f"Unknown theta_trend in meta.json: {theta_trend_mode!r}")
 
-    theta_obs_q10, theta_obs_q50, theta_obs_q90 = summarize_draws(theta_sub)
+    theta_obs_q025, theta_obs_q10, theta_obs_q50, theta_obs_q90, theta_obs_q975 = summarize_draws(theta_sub)
     theta_points = pd.DataFrame(
         {
             "model": names,
             "release_date": dates,
+            "theta_q025": theta_obs_q025,
             "theta_q10": theta_obs_q10,
             "theta_q50": theta_obs_q50,
             "theta_q90": theta_obs_q90,
+            "theta_q975": theta_obs_q975,
         }
     ).sort_values("release_date")
     theta_points.to_csv(args.outdir / "theta_points.csv", index=False)
@@ -653,7 +655,7 @@ def main() -> None:
         dt_grid = np.full_like(slope_logt_grid, np.nan)
         okg = slope_logt_grid > 0
         dt_grid[okg] = math.log(2.0) / slope_logt_grid[okg]
-        q10, q50, q90 = summarize_draws(dt_grid)
+        _q025, q10, q50, q90, _q975 = summarize_draws(dt_grid)
         pd.DataFrame(
             {"date": date_grid, "x_years_since_mean_release": x_grid2, "dt_years_q10": q10, "dt_years_q50": q50, "dt_years_q90": q90}
         ).to_csv(args.outdir / "doubling_time_curve.csv", index=False)
@@ -668,16 +670,18 @@ def main() -> None:
             mean_log_t_hours=mean_log_t_hours,
             p=p,
         )
-        q10, q50, q90 = summarize_draws(t_grid2_marg)
+        q025, q10, q50, q90, q975 = summarize_draws(t_grid2_marg)
         horizon_grid_frames.append(
             pd.DataFrame(
                 {
                     "p": p,
                     "x_years_since_mean_release": x_grid2,
                     "date": date_grid,
+                    "t_hours_q025": q025,
                     "t_hours_q10": q10,
                     "t_hours_q50": q50,
                     "t_hours_q90": q90,
+                    "t_hours_q975": q975,
                 }
             )
         )
@@ -691,16 +695,18 @@ def main() -> None:
             mean_log_t_hours=mean_log_t_hours,
             p=p,
         )
-        q10p, q50p, q90p = summarize_draws(t_points_marg)
+        q025p, q10p, q50p, q90p, q975p = summarize_draws(t_points_marg)
         horizon_points_frames.append(
             pd.DataFrame(
                 {
                     "model": names,
                     "release_date": dates,
                     "p": p,
+                    "t_hours_q025": q025p,
                     "t_hours_q10": q10p,
                     "t_hours_q50": q50p,
                     "t_hours_q90": q90p,
+                    "t_hours_q975": q975p,
                 }
             )
         )
@@ -714,16 +720,18 @@ def main() -> None:
             mean_log_t_hours=mean_log_t_hours,
             p=p,
         )
-        q10t, q50t, q90t = summarize_draws(t_grid2_typ)
+        q025t, q10t, q50t, q90t, q975t = summarize_draws(t_grid2_typ)
         horizon_grid_typ_frames.append(
             pd.DataFrame(
                 {
                     "p": p,
                     "x_years_since_mean_release": x_grid2,
                     "date": date_grid,
+                    "t_hours_q025": q025t,
                     "t_hours_q10": q10t,
                     "t_hours_q50": q50t,
                     "t_hours_q90": q90t,
+                    "t_hours_q975": q975t,
                 }
             )
         )
@@ -736,16 +744,18 @@ def main() -> None:
             mean_log_t_hours=mean_log_t_hours,
             p=p,
         )
-        q10pt, q50pt, q90pt = summarize_draws(t_points_typ)
+        q025pt, q10pt, q50pt, q90pt, q975pt = summarize_draws(t_points_typ)
         horizon_points_typ_frames.append(
             pd.DataFrame(
                 {
                     "model": names,
                     "release_date": dates,
                     "p": p,
+                    "t_hours_q025": q025pt,
                     "t_hours_q10": q10pt,
                     "t_hours_q50": q50pt,
                     "t_hours_q90": q90pt,
+                    "t_hours_q975": q975pt,
                 }
             )
         )
@@ -810,12 +820,14 @@ def main() -> None:
         alpha=0.85,
         label="model θ (median; 10–90%)",
     )
-    theta_grid_q10, theta_grid_q50, theta_grid_q90 = summarize_draws(theta_grid)
+    theta_grid_q025, theta_grid_q10, theta_grid_q50, theta_grid_q90, theta_grid_q975 = summarize_draws(theta_grid)
     pd.DataFrame({
         "date": date_grid,
+        "theta_q025": theta_grid_q025,
         "theta_q10": theta_grid_q10,
         "theta_q50": theta_grid_q50,
         "theta_q90": theta_grid_q90,
+        "theta_q975": theta_grid_q975,
     }).to_csv(args.outdir / "theta_trend_grid.csv", index=False)
     ax.plot(date_grid, theta_grid_q50, color="C0", linewidth=2, label="θ trend (date → θ)")
     ax.fill_between(date_grid, theta_grid_q10, theta_grid_q90, color="C0", alpha=0.15)
