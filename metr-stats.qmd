@@ -192,6 +192,16 @@ plt.rcParams.update(
 )
 ```
 
+## TLDR
+I reanalyze the METR task data using a Bayesian item response theory model instead of METR's two-stage approach. Main findings:
+
+* Four trajectory shapes (linear, quadratic, power-law, saturating) fit the existing data equally well but diverge dramatically on forecasts. For instance, 95% credible interval for 125 year-crossing is 2031-01 – 2033-10 for linear and 2028-02 – 2031-09 for quadratic.
+* Doubling time under the standard linear (exponential growth) model: ~4.1 months, which is similar to METRs estimate. (FIXME 95% credibility interval: 3.7–4.6).
+* Tasks of the same human-time length vary a lot in difficulty. This matters because using "80% success on a typical task of length X" instead of "80% expected success on a random task of length X" makes the predicted crossing dates roughly an order of magnitude smaller. The marginal (random task) version is what's practically relevant but it's considerably less impressive.
+* Credible intervals throughout are probably too narrow because I treat human task times as known rather than estimating them as latent variables. This could be a big deal!
+
+## METR data
+
 Let's start with a plot that shouldn't be too surprising. Four reasonble models fit the METR data equally well.[LOO scores differ by at most ~7 points and calibration is nearly identical, with Brier $\approx$ 0.066 across the board.]{.aside} They agree about the past but disagree strongly about the future.
 
 
@@ -531,17 +541,18 @@ for _, r1 in df1m.iterrows():
         d2, c2 = _fmt_row(r125.iloc[0])
     else:
         d2, c2 = "---", "---"
-    rows.append(
-        {
-            "Trend": label,
-            "1 mo mean": d1,
-            "1 mo 95% CrI": c1,
-            "125 yr mean": d2,
-            "125 yr 95% CrI": c2,
-        }
-    )
+    rows.append((label, d1, c1, d2, c2))
 
-Markdown(pd.DataFrame(rows).to_markdown(index=False))
+html50 = '<table style="width:100%">\n<thead>\n'
+html50 += '<tr><th rowspan="2">Trend</th>'
+html50 += '<th colspan="2" style="text-align:center;border-bottom:none">1 month</th>'
+html50 += '<th colspan="2" style="text-align:center;border-bottom:none">125 years</th></tr>\n'
+html50 += '<tr><th>Mean</th><th>95% CrI</th><th>Mean</th><th>95% CrI</th></tr>\n'
+html50 += '</thead>\n<tbody>\n'
+for label, d1, c1, d2, c2 in rows:
+    html50 += f'<tr><td>{label}</td><td>{d1}</td><td>{c1}</td><td>{d2}</td><td>{c2}</td></tr>\n'
+html50 += '</tbody>\n</table>'
+Markdown(html50)
 ```
 
 
@@ -663,16 +674,90 @@ So, on one hand, it's the variance ($\sigma_b \approx 1.44$) alone that causes t
 
 I'd say the "correct" horizon to talk about is the marginal one. "Typical" is optimistic since it works on tasks of average difficulty for its length only. On the other hand, marginal accounts for the full spread of real tasks, so it is what's practically relevant for predicting the probability of success on an arbitrary task of some length. That said, frontier performance of $6$ minutes does sound sort of short? I am not really sure. I ask Claude to do short coding and stats tasks frequently, and I do get subtly wrong responses. I usually attribute these to imprecise prompting but I could be wrong.
 
+Anyway, the predicted crossing dates at 80% success:
 
+```{python}
+# | echo: false
+# | label: tbl-horizon-80-1mo
+# | tbl-cap: "Predicted date when the 80%-success horizon reaches 1 month. The saturating model is omitted (almost never crosses)."
 
+df_typ_1m = pd.read_csv("blog/_generated/one_month_horizon_p80_typical.csv")
+df_marg_1m = pd.read_csv("blog/_generated/one_month_horizon_p80_marginal.csv")
+
+_labels80 = {
+    "linear": "Linear",
+    "quadratic_pos": "Quadratic",
+    "xpow": "Power-law",
+}
+
+def _get80(df, trend):
+    sub = df[df["theta_trend"] == trend]
+    if not len(sub):
+        return "---", "---"
+    r = sub.iloc[0]
+    if r["frac_crossing"] < 0.01 or pd.isna(r["mean_date"]):
+        return "---", "---"
+    lo = _to_ym(r["ci95_low"]) if pd.notna(r["ci95_low"]) else ""
+    hi = _to_ym(r["ci95_high"]) if pd.notna(r["ci95_high"]) else ""
+    cri = f"{lo} -- {hi}" if lo and hi else "---"
+    return _to_ym(r["mean_date"]), cri
+
+rows_1m = []
+for trend, label in _labels80.items():
+    td, tc = _get80(df_typ_1m, trend)
+    md, mc = _get80(df_marg_1m, trend)
+    rows_1m.append((label, td, tc, md, mc))
+
+h = '<table style="width:100%">\n<thead>\n'
+h += '<tr><th rowspan="2">Trend</th>'
+h += '<th colspan="2" style="text-align:center;border-bottom:none">Typical</th>'
+h += '<th colspan="2" style="text-align:center;border-bottom:none">Marginal</th></tr>\n'
+h += '<tr><th>Mean</th><th>95% CrI</th><th>Mean</th><th>95% CrI</th></tr>\n'
+h += '</thead>\n<tbody>\n'
+for label, td, tc, md, mc in rows_1m:
+    h += f'<tr><td>{label}</td><td>{td}</td><td>{tc}</td><td>{md}</td><td>{mc}</td></tr>\n'
+h += '</tbody>\n</table>'
+Markdown(h)
+```
+
+```{python}
+# | echo: false
+# | label: tbl-horizon-80-125y
+# | tbl-cap: "Predicted date when the 80%-success horizon reaches 125 years. The saturating model is omitted (never crosses)."
+
+df_typ_125 = pd.read_csv("blog/_generated/125y_horizon_p80_typical.csv")
+df_marg_125 = pd.read_csv("blog/_generated/125y_horizon_p80_marginal.csv")
+
+rows_125 = []
+for trend, label in _labels80.items():
+    td, tc = _get80(df_typ_125, trend)
+    md, mc = _get80(df_marg_125, trend)
+    rows_125.append((label, td, tc, md, mc))
+
+h2 = '<table style="width:100%">\n<thead>\n'
+h2 += '<tr><th rowspan="2">Trend</th>'
+h2 += '<th colspan="2" style="text-align:center;border-bottom:none">Typical</th>'
+h2 += '<th colspan="2" style="text-align:center;border-bottom:none">Marginal</th></tr>\n'
+h2 += '<tr><th>Mean</th><th>95% CrI</th><th>Mean</th><th>95% CrI</th></tr>\n'
+h2 += '</thead>\n<tbody>\n'
+for label, td, tc, md, mc in rows_125:
+    h2 += f'<tr><td>{label}</td><td>{td}</td><td>{tc}</td><td>{md}</td><td>{mc}</td></tr>\n'
+h2 += '</tbody>\n</table>'
+Markdown(h2)
+```
+
+Make of this what you want, but let's go through one scenario. Let's say I'm a believer in superexponential models with no preference between quadratic and power-law, so I have 50-50 weighting on those. Suppose also I believe that 125 years is the magic number for the auto-coder of [AI Futures](https://www.aifuturesmodel.com/), but I prefer $80\%$ to $50\%$ as the latter is too brittle. Then, using the arguably correct marginal formulation, my timeline has mean roughly January 2031, but the typical framework yields mean ~2030 instead. And this isn't too bad, just a difference of one year! The linear model is similar -- timelines are pushed out roughly 1.5 year.  
+
+## Modeling $t_j$
+
+The main weakness of this analysis is treating task times $t_j$ as known. METR takes the geometric mean of (usually 2-3) successful human baselines per task and treats it as a known quantity, discarding uncertainty. But we can model $t_j$ as a latent variable informed by the reported baselines. This would be straightforward in Stan and give more honest picture of what the data actually support, as all credible intervals will be widened. 
+
+It is possible that we'd observe smaller differences between the typical and marginal plots at $80\%$ horizon if we model the $t_j$ s properly, as perhaps more of the variance would be absorbed by the actual real uncertainty in $t_j$. I'm not sure, but getting hold of the data or doing short simulation would help.  
+
+When modelling $t_j$ I would probably try a Weibull distribution instead of log-normal, since the log-normal is more typically more heavy-tailed and the Weibull has stronger intuitive justification as a general distribution of task completion times.
 
 ## Notes and remarks
 
 * I also tried a finite-time singularity model of the form $\theta \sim \gamma_0 + \gamma_1 x + c / (t^* - x)^\alpha$. The posterior on the singularity date $t^*$ didn't really move from the prior at all. This is no surprise, it just means the data are uniformative.
-* The main weakness of this analysis is treating task times $t_j$ as known. METR takes the geometric mean of (usually 2-3) successful human baselines per task and treats it as a known quantity, discarding uncertainty. But we can model $t_j$ as a latent variable informed by the reported baselines. This would be straightforward in Stan and give more honest picture of what the data actually support, as all credible intervals will be widened. 
-* It is possible that we'd observe smaller differences between the typical and marginal plots at $80\%$ horizon if we model the $t_j$ s properly, as perhaps more of the variance would be absorbed by the actual real uncertainty in $t_j$. I'm not sure, but getting hold of the data or doing short simulation would help.  
-* When modelling $t_j$ I would probably try a Weibull distribution instead of log-normal, since the log-normal is more typically more heavy-tailed and the Weibull has stronger intuitive justification as a general distribution of task completion times.
 * There are loads of other knobs one could turn. Perhaps you could introduce a discrimination parameter that varies by model and task, together with a hierarchical prior. Perhaps you could make discrimination a function of time, etc. I doubt any these would change the picture much, if at all. The model fits well enough as is, even if the uncertainty is likely too small. That said, I don't want to dissuade anyone from trying!
 * (Claude point): Having Claude code or Codex write up graphs and code is amazing, but it is ... irritating to back and clean up their "accidental" rewriting of my text. That said, any LLM-ese in this post is my responsibility.
-
-*Code and data: [repository link]*
