@@ -221,14 +221,47 @@ def _crossing_cri(df, trend):
 
 cross125_lin_lo, cross125_lin_hi = _crossing_cri(_df125_pre, "linear")
 cross125_quad_lo, cross125_quad_hi = _crossing_cri(_df125_pre, "quadratic_pos")
+
+# Frontier model's marginal 80% horizon
+_hpts_marg80 = load_horizon_points("time_irt__theta_linear", kind="marginal")
+_hpts_marg80 = _hpts_marg80.query("p == 0.8").sort_values("release_date")
+frontier_80_marg_minutes = _hpts_marg80.iloc[-1]["t_hours_q50"] * 60
+
+# Scenario: 125-year 80% crossing, marginal vs typical
+_df_marg_125_sc = pd.read_csv("blog/_generated/125y_horizon_p80_marginal.csv")
+_df_typ_125_sc = pd.read_csv("blog/_generated/125y_horizon_p80_typical.csv")
+
+def _mean_crossing_date(df, trend):
+    return pd.to_datetime(df[df["theta_trend"] == trend].iloc[0]["mean_date"])
+
+def _approx_month_year(ts):
+    if ts.day >= 15:
+        ts += pd.offsets.MonthBegin(1)
+    return ts.strftime("%B %Y")
+
+_marg_q = _mean_crossing_date(_df_marg_125_sc, "quadratic_pos")
+_marg_p = _mean_crossing_date(_df_marg_125_sc, "xpow")
+scenario_marg = _marg_q + (_marg_p - _marg_q) / 2
+scenario_marg_str = _approx_month_year(scenario_marg)
+
+_typ_q = _mean_crossing_date(_df_typ_125_sc, "quadratic_pos")
+_typ_p = _mean_crossing_date(_df_typ_125_sc, "xpow")
+scenario_typ = _typ_q + (_typ_p - _typ_q) / 2
+scenario_typ_str = _approx_month_year(scenario_typ)
+
+scenario_diff_years = abs((scenario_marg - scenario_typ).days) / 365.25
+
+_marg_lin_125 = _mean_crossing_date(_df_marg_125_sc, "linear")
+_typ_lin_125 = _mean_crossing_date(_df_typ_125_sc, "linear")
+linear_diff_years = abs((_marg_lin_125 - _typ_lin_125).days) / 365.25
 ```
 
 ## TLDR
 I reanalyzed the METR task data using a Bayesian item response theory model. 
 
 * Four trajectory shapes (linear, quadratic, power-law, saturating) fit the existing data equally well but diverge on forecasts. For instance, the 95% credible interval for the 125-year crossing is `{python} cross125_lin_lo` – `{python} cross125_lin_hi` for linear and `{python} cross125_quad_lo` – `{python} cross125_quad_hi` for quadratic.
-* Doubling time under the standard linear (exponential growth) model is ~`{python} f"{dt_q50:.1f}"` months, which is similar to METR's estimate. (95% credible interval: `{python} f"{dt_q025:.1f}"`–`{python} f"{dt_q975:.1f}"`).
-* Tasks of the same human time vary a lot in difficulty. This matters because using "80% success on a typical task of length X" instead of "80% expected success on a random task of length X" makes the predicted crossing dates roughly an order of magnitude smaller. The marginal (random task) version is what's practically relevant but it's less impressive than the typical version METR uses.
+* Doubling time under the standard linear (exponential growth) model is ~`{python} f"{dt_q50:.1f}"` months, which is similar to METR's estimate (95% credible interval: `{python} f"{dt_q025:.1f}"`–`{python} f"{dt_q975:.1f}"`).
+* Tasks of the same human time vary a lot in difficulty. This matters because at any given date, the typical horizon is roughly an order of magnitude longer than the marginal one. The marginal (random task) version is what's practically relevant, but it's less impressive than the typical version METR uses.
 * Credible intervals throughout are probably too narrow because I treat human times as known rather than estimating them as latent variables. I'm doing this because I don't have access to all the raw data, and it could be a big deal.
 
 ## METR data
@@ -332,15 +365,15 @@ fig.tight_layout()
 plt.show()
 ```
 
-These curves are fitted using a Bayesian item response theory model described below. Before describing it, let's recall METR's analysis of the time-horizon. They proceed in two stages:
+These curves are fitted using a Bayesian item response theory model described below. Before describing it, let's recall METR's analysis of the time horizon. They proceed in two stages:
 
-1. **Per-model logistic regression.** For each model $i$, fit $P(\text{success}) = \sigma(\beta_i(\log h_i - \log t_j))$ where $t_j$ is human time for task $j$. Here $h_i$ is the task duration where the curve crosses 50%. When $t_j = h_i$, the argument is zero, so $\sigma(0) = 0.5$. This gives a "horizon score" $h_i$ per model.
+1. *Per-model logistic regression.* For each model $i$, fit $P(\text{success}) = \sigma(\beta_i(\log h_i - \log t_j))$ where $t_j$ is human time for task $j$. Here $h_i$ is the task duration where the curve crosses 50%. When $t_j = h_i$, we get $\sigma(0) = 0.5$, a $50\%$ horizon. This gives a "horizon score" $h_i$ per model.
 
-2. **An OLS trend.** Regress $\log h_i$ on release date. The slope gives a doubling time of $\approx 4$ months.
+2. *An OLS trend.* Regress $\log h_i$ on release date. The slope gives a doubling time of ~`{python} f"{dt_q50:.1f}"` months.
 
-This is good modeling and gets the main story right, but there are some non-standard choices. For instance, the slope $\beta_i$ is per-model rather than per-task (which is unusual); Stage-2 uncertainty doesn't propagate back into Stage 1, making uncertainty estimation tricky; every task of the same length is modelled as equally difficult; and there is only one trajectory shape. 
+This is good modeling and gets the main story right, but there are some non-standard choices. For instance, the slope $\beta_i$ is per-model rather than per-task (which is unusual) and Stage 2 uncertainty doesn't propagate back into Stage 1. It also treats every task of the same length as equally difficult and only considers one trajectory shape.
 
-In this post I make a joint model, adjust some things to be more in line with standard practice, and ask what happens when you try different trajectory shapes. The post is unavoidably somewhat technical, but not so godawful that Claude won't be able to answer any question you have about the methodology. Models are fitted with Stan, 4 chains $\times$ 1000 post-warmup draws, with code available [here](https://github.com/JonasMoss/metr-stats). I intentionally won't go into details about technicalities, e.g. prior choices -- the code contains anything you wish to know and your favorite LLM will figure it out for you. (All priors were chosen by Codex / Claude Code and appear reasonable enough.)
+In this post I make a joint model, adjust some things to be more in line with standard practice, and ask what happens when you try different trajectory shapes. The post is somewhat technical, but not so god-awful that Claude won't be able to answer any question you have about the methodology. Models are fitted with Stan, 4 chains $\times$ 1000 post-warmup draws, with code available [here](https://github.com/JonasMoss/metr-stats). I intentionally won't go into details about technicalities, e.g. prior choices -- the code contains everything you'll want to know and your favorite LLM will figure it out for you. (All priors were chosen by Codex / Claude Code and appear reasonable enough.)
 
 ## Psychometrics
 
@@ -348,7 +381,7 @@ The first stage of METR's model is *almost* a 2-parameter logistic model (2PL), 
 
 So, what kind of problems was the 2PL model designed for? Say you give 200 students a math exam with 50 questions and record their answers as correct / incorrect. You want to estimate the students' math ability, but raw percent correct scores aren't necessarily very good, as they depend on which questions (easy or hard? relative to which students?) happened to be on the exam.
 
-The 2PL model solves this by giving each student a single ability score ($\theta_i$) and each question two parameters: a *difficulty* ($b_j$, how hard it is) and a *discrimination* ($a_j$, how cleanly it separates strong from weak students). "What is 3*2?" has low discrimination as everyone gets it right regardless of ability. A simple proof-writing question has high discrimination as sufficiently strong students can solve it but poor students have no chance.  
+The 2PL model solves this by giving each student a single ability score ($\theta_i$) and each question two parameters: a *difficulty* ($b_j$, how hard it is) and a *discrimination* ($a_j$, how cleanly it separates strong from weak students). "What is 3×2?" has low discrimination as everyone gets it right regardless of ability. A simple proof-writing question has high discrimination as sufficiently strong students can solve it, but weak students have no chance.  
 
 The model estimates all parameters simultaneously via a logistic regression:
 
@@ -360,7 +393,7 @@ The reason this matters here is that METR tasks are like exam questions — they
 
 ## Modeling difficulty
 
-Ability and difficulty parameters $\theta_i, b_j$ in the 2PL are hard to interpret. The scale is arbitrary, and it's not clear what, for instance, a 0.1 increase in ability actually means. Or whether it would be better to take a log-transform of the parameter, etc. A really cool / tubular feature of the METR data is that each task comes with a human time, which is already scaled, transformed, and interpretable. So let's connect human time to difficulty first.
+Ability and difficulty parameters $\theta_i, b_j$ in the 2PL are hard to interpret. The scale is arbitrary, and it's not clear what, for instance, a 0.1 increase in ability actually means. Or whether it would be better to take a log-transform of the parameter, etc. A really cool / tubular feature of the METR data is that each task comes with a human time, which gives us a natural, interpretable scale for difficulty. So let's connect human time to difficulty first.
 
 $$
 b_j \sim \mathcal{N}(\alpha + \kappa \cdot \log t_j, \;\sigma_b)
@@ -386,34 +419,34 @@ fig.tight_layout()
 plt.show()
 ```
 
-Diagnostics aside, this is what $\sigma_b \approx 1.44$ looks like in practice. There's not too much curvature, so I think the log-linear form is decent, though there might be some curvature from -2 on. There is, though, a weird cluster at the left, which I think can be explained by very easy tasks containing virtually no information about difficulty, but I don't think it's worth inspecting these further / removing points. Overall this looks a-ok to me.
+Diagnostics aside, this is what $\sigma_b \approx 1.44$ looks like in practice. There's not too much curvature, so I think the log-linear form is decent, though there might be some curvature from -2 onward. There is, though, a weird cluster on the left, which I think can be explained by very easy tasks containing virtually no information about difficulty, but I don't think it's worth inspecting these further / removing points. Overall this looks A-OK to me.
 
 ## Modeling model ability
 
-By directly modeling model ability we can try out shapes like exponential, subexponential, superexponential, saturating, and singularity. Forecasts depend a lot on which shape you pick, and the data doesn't really tell you much, so it's not easy to choose between them. Your priors rule here.
+By directly modeling model ability, we can try out shapes like exponential, subexponential, superexponential, saturating, and singularity. Forecasts depend a lot on which shape you pick, and the data doesn't really tell you much, so it's not easy to choose between them. Your priors rule here.
 
 Define $x_i = (\text{date}_i - \text{date}_0) / 365.25$, where $\text{date}_0$ is the mean release date (currently Sep 2024), so $x$ is in years. The abilities are modeled as
 $$
 \theta_i \sim \mathcal{N}\bigl(f(x_i;\, \gamma),\; \sigma_\theta\bigr)
 $$
 
-I'm still using a random effect for model ability here, since nobody seriously thinks every model released on the same date must be equally capable. I'm looking at four shapes for $f$:[Quadratic is the simplest choice of superexponential function. One might spin up a story in its favour but using it is somewhat arbitrary. The power-law is the easiest function that can be both super- and subexponential, and the saturating model I've included because why?]{.aside}
+I'm still using a random effect for model ability here, since nobody seriously thinks every model released on the same date must be equally capable. I'm looking at four shapes for $f$:[Quadratic is the simplest choice of superexponential function. You could spin a story in its favor, but using it is somewhat arbitrary. The power-law is the simplest function that can be both super- and subexponential (in practice turns out to be superexponential here though), and I included the saturating model because, well, why not?]{.aside}
 
 | Model | $f(x)$ | Params | Intuition |
 |:------|:-------|:------:|:----------|
 | Linear | $\gamma_0 + \gamma_1 x$ | 2 | Linear $\theta$ = exponential horizon growth (constant doubling time) |
 | Quadratic | $\gamma_0 + \gamma_1 x + \gamma_2 x^2$, $\gamma_2 \geq 0$ | 3 | Superexponential, accelerating growth |
-| Power-law | $\gamma_0 + \gamma_1 \tilde{x}^{\alpha}$, $\alpha \in [0.1, 2]$ | 3 | Flexible: sub- or super-exponential |
-| Saturating | $\theta_{\min} + \Delta\theta \cdot \text{logit}^{-1}(a + bx)$ | 4 | S-curve ceiling on ability, $\tilde{x}$ is a shifted/scaled version of $x$. |
+| Power-law | $\gamma_0 + \gamma_1 \tilde{x}^{\alpha}$, $\alpha \in [0.1, 2]$ | 3 | Flexible: sub- or super-exponential. $\tilde{x}$ is a shifted/scaled version of $x$. |
+| Saturating | $\theta_{\min} + \Delta\theta \cdot \text{logit}^{-1}(a + bx)$ | 4 | S-curve ceiling on ability. |
 
-If METR's GitHub repo contained all the historical data, I would also have tried a piecewise linear with a breakpoint around the time of o1, which visually fits the original METR graphs better than a plain linear fit. But since the available data doesn't go that far back I don't need to, and the value of including those early points in a forecasting exercise is questionable anyway. Getting hold of the latest data points is more important.
+If METR's GitHub repo contained all the historical data, I would also have tried a piecewise linear with a breakpoint around the time of o1, which visually fits the original METR graphs better than a plain linear fit. But since the available data doesn't go that far back, I don't need to, and the value of including those early points in a forecasting exercise is questionable anyway. Getting hold of the latest data points is more important.
 
 All models share the same 2PL likelihood and task parameters ($b_j$, $a_j$,
-$\alpha$, $\kappa$, $\sigma_b$). Only the $\theta$-prior changes.
+$\alpha$, $\kappa$, $\sigma_b$). Only the model for $\theta$ changes.
 
 ### Implied doubling time
 
-I get `{python} f"{dt_q50:.1f}"` months (95% credible interval: `{python} f"{dt_q025:.1f}"`--`{python} f"{dt_q975:.1f}"`), which is similar to METR's v1.1 estimate of ~4.3 months. Of course, doubling time only makes sense for the linear model above, as the doubling time of the other models varies with time.
+I get `{python} f"{dt_q50:.1f}"` months (95% credible interval: `{python} f"{dt_q025:.1f}"`--`{python} f"{dt_q975:.1f}"`), which is close to METR's v1.1 estimate. Of course, doubling time only makes sense for the linear model above, as the doubling time of the other models varies with time.
 
 ```{python}
 #| label: fig-doubling-time
@@ -449,7 +482,7 @@ plt.show()
 
 ### Crossing thresholds
 
-Each model except the saturating model will cross any threshold if the date is large enough. Here are posteriors for the 50% crossing across our models. The saturating model almost never crosses the 1-month and 125-year thresholds since it saturates too fast. 
+Each model except the saturating model will cross any threshold given enough time. Here are posteriors for the 50% crossing across our models. The saturating model almost never crosses the 1-month and 125-year thresholds since it saturates too fast. 
 
 ```{python}
 # | echo: false
@@ -518,15 +551,15 @@ Markdown(html50)
 
 ### What about 80% success? 
 
-Everything above uses 50% success, but METR also cares about 80% success and fits a separate model for that. We don't need to do that here since the model estimation doesn't really depend on success rates at all. We'll just calculate the 80% success using posterior draws instead.
+Everything above uses 50% success, but METR also cares about 80% success and fits a separate model for that. We don't need to do that here since the model estimation doesn't really depend on success rates at all. We'll just calculate the 80%-success horizon using posterior draws instead.
 
 But there are actually two reasonable ways to define "80% success," and they give different answers.
 
-1. **Typical:** Pick a task of average difficulty for its length. Can the model solve it 80% of the time? This is roughly what METR computes.
+1. *Typical:* Pick a task of average difficulty for its length. Can the model solve it 80% of the time? This is roughly what METR computes.
 
-2. **Marginal:** Pick a random task of that length. What's the expected success rate? Because some tasks are much harder than average, the hard ones drag down the average more than easy ones push it up.
+2. *Marginal:* Pick a random task of that length. What's the expected success rate? Because some tasks are much harder than average, the hard ones drag down the average more than easy ones push it up.
 
-At 50% the two definitions agree. But at 80%, the gap is roughly an order of magnitude! 
+At 50%, the two definitions agree exactly. But at 80%, the gap is roughly an order of magnitude! 
 
 ```{python}
 # | label: fig-marginal-typical
@@ -648,7 +681,7 @@ plt.show()
 
 So, on the one hand, it's the variance ($\sigma_b \approx 1.44$) alone that causes these two plots to be necessary under our model. But on the other hand, the difference is not really a consequence of modeling. Some tasks of the same human time vary a lot in how hard they are for our models, and a phenomenon like this would happen for *any* model that's actually honest about this.
 
-I'd say the "correct" horizon to talk about is the marginal one. "Typical" is optimistic since it works on tasks of average difficulty for its length only. The marginal accounts for the full spread of real tasks, so it's what you actually care about when predicting success on a random task of some length. That said, frontier performance of $6$ minutes does sound sort of short? I am not really sure. I ask Claude to do short coding and stats tasks frequently, and I do get subtly wrong responses. I usually attribute these to imprecise prompting, but I could be wrong.
+I'd say the "correct" horizon to talk about is the marginal one. "Typical" is optimistic since it only considers tasks of average difficulty for their length. The marginal accounts for the full spread of tasks, so it's what you actually care about when predicting success on a random task of some length. That said, frontier performance of `{python} f"{frontier_80_marg_minutes:.0f}"` minutes does sound sort of short? I'm not sure. I ask Claude to do short coding and stats tasks frequently, and I do get subtly wrong responses. I usually attribute these to imprecise prompting, but I could be wrong.
 
 Anyway, the predicted crossing dates at 80% success:
 
@@ -724,20 +757,20 @@ h2 += "</tbody>\n</table>"
 Markdown(h2)
 ```
 
-Make of this what you want, but let's go through one scenario. Let's say I'm a believer in superexponential models with no preference between quadratic and power-law, so I have 50-50 weighting on those. Suppose also I believe that 125 years is the magic number for the auto-coder of [AI Futures](https://www.aifuturesmodel.com/), but I prefer $80\%$ to $50\%$ as the latter is too brittle. Then, using the arguably correct marginal formulation, my timeline has mean roughly January 2031, but the typical framework yields mean ~2030 instead. And this isn't too bad, just a difference of one year! The linear model is similar -- timelines are pushed out roughly 1.5 years.  
+Make of this what you will, but let's go through one scenario. Let's say I'm a believer in superexponential models with no preference between quadratic and power-law, so I have 50-50 weighting on those. Suppose also I believe that 125 years is the magic number for the auto-coder of [AI Futures](https://www.aifuturesmodel.com/), but I prefer $80\%$ to $50\%$ as the latter is too brittle. Then, using the arguably correct marginal formulation, my timeline has mean roughly `{python} scenario_marg_str`, but the typical framework yields roughly `{python} scenario_typ_str` instead. And this isn't too bad, just a difference of ~`{python} f"{scenario_diff_years:.1f}"` years! The linear model is similar, with timelines pushed out roughly `{python} f"{linear_diff_years:.1f}"` years.  
 
 ## Modeling $t_j$
 
-The main weakness of this analysis is treating human times $t_j$ as known. METR takes the geometric mean of (usually 2-3) successful human baselines per task and treats it as a known quantity, discarding uncertainty. But we can model $t_j$ as a latent variable informed by the reported baselines. This would be straightforward to implement in Stan, and would give a more honest picture of what the data actually support, as all credible intervals will be widened. 
+The main weakness of this analysis is treating human times $t_j$ as known. METR takes the geometric mean of (usually 2-3) successful human baselines per task and treats it as a known quantity, discarding uncertainty. But we can model $t_j$ as a latent variable informed by the reported baselines. This is easy enough to do in Stan, and would give a more honest picture of what the data actually supports, as all credible intervals will be widened. 
 
-It's probable that we'd observe smaller differences between the typical and marginal plots at $80\%$ horizon by modeling the $t_j$ s properly, as more of the variance would likely be absorbed by the real uncertainty in $t_j$. I'm not sure how big the effect would be, but getting hold of the data or doing a short simulation would help.  
+I'd expect smaller differences between the typical and marginal plots at $80\%$ horizon if the $t_j$ values were modeled properly, as more of the variance would likely be absorbed by the uncertainty in $t_j$. I'm not sure how big the effect would be, but getting hold of the data or doing a short simulation would help.  
 
-A technical point: When modeling $t_j$ I would also try a Weibull distribution instead of log-normal, since the log-normal is typically more heavy-tailed and the Weibull has stronger intuitive justification as a general distribution of task completion times.
+A technical point: When modeling $t_j$, I would also try a Weibull distribution instead of log-normal, since the log-normal is typically heavier-tailed and the Weibull is easier to justify on theoretical grounds using its failure-rate interpretation.
 
 ## Notes and remarks
 
-* I also tried a finite-time singularity model of the form $\theta \sim \gamma_0 + \gamma_1 x + c / (t^* - x)^\alpha$. The posterior on the singularity date $t^*$ didn't really move from the prior at all. This is no surprise; it just means the data are uninformative.
-* There are loads of other knobs one could turn. Perhaps you could introduce a discrimination parameter that varies by model and task, together with a hierarchical prior. Perhaps you could make discrimination a function of time, etc. I doubt any of these would change the picture much, if at all. The model fit is good enough as it is, even if the uncertainty is likely too small. That said, I don't want to dissuade anyone from trying!
-* The power-law model does in principle support both sub- and superexponential trajectories ($\alpha < 1$ and $\alpha > 1$ respectively, where $\alpha = 1$ is the linear model). The posterior puts $P(\alpha < 1) \approx 4\%$, so the data does not support subexponential growth. At least when using this model.
-* There's plenty of best-practice stuff I haven't done, such as inspecting the importance of priors. (But we have a lot of data, and I wouldn't expect them to matter too much.) 
-* (Claude point): Having Claude code or Codex write up graphs and code is amazing, but it is ... irritating to go back and clean up their "accidental" rewriting of my text. That said, any LLM-ese in this post is my responsibility.
+* I also tried a finite-time singularity model of the form $\theta \sim \gamma_0 + \gamma_1 x + c / (t^* - x)^\alpha$. The posterior on the singularity date $t^*$ didn't really move from the prior at all. This is no surprise. It just means the data is uninformative.
+* There are loads of other knobs you could turn. Perhaps you could introduce a discrimination parameter that varies by model and task, together with a hierarchical prior. Perhaps you could make discrimination a function of time, etc. I doubt any of these would change the picture much, if at all. The model fit is good enough as it is, even if the uncertainty is likely too small. That said, I don't want to dissuade anyone from trying!
+* The power-law model does in principle support both sub- and superexponential trajectories ($\alpha < 1$ and $\alpha > 1$, respectively, where $\alpha = 1$ is the linear model). The posterior puts $P(\alpha < 1) \approx 4\%$, so the data does not support subexponential growth. At least when using this model.
+* There's plenty of best-practice stuff I haven't done, such as prior sensitivity analysis. (But we have a lot of data, and I wouldn't expect them to matter too much.) 
+* (Claude point): Having Claude Code or Codex write up graphs and code is amazing, but it is ... irritating to go back and clean up their "accidental" rewriting of my text. That said, any LLM-ese in this post is my responsibility.
