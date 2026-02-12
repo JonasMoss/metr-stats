@@ -93,13 +93,13 @@ Models without dates (e.g. "human") get a weak `N(0, 1.5)` fallback prior.
 
 ## Key results so far
 
-- **LOO**: Linear elpd = -2192, quadratic = -2200 (linear wins by ~8, ~1 SE).
-- **Calibration**: Brier ≈ 0.066, logscore/trial ≈ -0.31 (both models similar).
+- **LOO**: Linear elpd = -2192, quadratic = -2199, xpow = -2198, saturating = -2196 (all within ~7, <1 SE).
+- **Calibration**: Brier ≈ 0.066, logscore/trial ≈ -0.31 (all four models nearly identical).
 - **1-month horizon crossing** (from one_month_horizon.py):
-  - Linear: 100% by 2028-06-24 (CrI 2027-11 to 2029-03)
-  - Quadratic: 91% by 2027-09 (CrI 2026-11 to 2029-07)
-  - xpow: 100% by 2027-10 (CrI 2027-02 to 2029-01)
-  - t50_logistic (saturating): 0% — never reaches 1 month
+  - Linear: 100% by 2028-06-24 (CrI 2027-11 to 2029-04)
+  - Quadratic: 100% by 2027-07-20 (CrI 2026-11 to 2028-06)
+  - xpow: 100% by 2027-10-23 (CrI 2027-02 to 2029-01)
+  - theta_logistic (saturating): 3% by 2029-01 (CrI 2027-06 to 2031-10)
 - **Singularity models**: posterior dominated by prior; data uninformative about singularity.
 - **Task difficulty**: κ ≈ 0.93 (log-length is strong predictor), σ_b ≈ 1.44 (large residual).
 

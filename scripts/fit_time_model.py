@@ -39,6 +39,7 @@ def parse_args() -> argparse.Namespace:
             "log1p",
             "xpow",
             "t50_logistic",
+            "theta_logistic",
             "singularity",
             "singularity_nolinear",
         ],
@@ -278,6 +279,15 @@ def main() -> None:
                     "mean_log_t_hours": float(mean_log_t_hours),
                 }
             )
+        elif args.theta_trend == "theta_logistic":
+            x_date, has_date, theta_trend_meta0 = build_release_x(model_names, args.benchmark_yaml)
+            theta_trend_meta = {"theta_trend": args.theta_trend, **theta_trend_meta0}
+            stan_data.update(
+                {
+                    "x_date": x_date.tolist(),
+                    "has_date": has_date.tolist(),
+                }
+            )
         elif args.theta_trend in {"singularity", "singularity_nolinear"}:
             x_date, has_date, theta_trend_meta0 = build_release_x(model_names, args.benchmark_yaml)
             x_date_max = float(np.max(x_date[has_date == 1]))
@@ -309,6 +319,8 @@ def main() -> None:
             args.stan = Path("stan/2pl_time_loglinear_theta_trend_xpow.stan")
         elif args.theta_trend == "t50_logistic":
             args.stan = Path("stan/2pl_time_loglinear_theta_trend_t50_logistic.stan")
+        elif args.theta_trend == "theta_logistic":
+            args.stan = Path("stan/2pl_time_loglinear_theta_trend_theta_logistic.stan")
         elif args.theta_trend == "singularity":
             args.stan = Path("experiments/stan/2pl_time_loglinear_theta_singularity.stan")
         elif args.theta_trend == "singularity_nolinear":

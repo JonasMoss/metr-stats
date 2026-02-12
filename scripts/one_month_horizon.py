@@ -22,8 +22,8 @@ def parse_args() -> argparse.Namespace:
     p.add_argument(
         "--specs",
         type=str,
-        default="time_irt__theta_linear,time_irt__theta_quadratic,time_irt__theta_xpow,time_irt__theta_t50_logistic",
-        help="Comma-separated specs (default: linear,quadratic,xpow,t50_logistic).",
+        default="time_irt__theta_linear,time_irt__theta_quadratic_pos,time_irt__theta_xpow,time_irt__theta_theta_logistic",
+        help="Comma-separated specs (default: linear,quadratic_pos,xpow,theta_logistic).",
     )
     p.add_argument("--run-id", type=str, default=None, help="If set, use this run-id for all specs (otherwise LATEST).")
     p.add_argument("--p", type=float, default=0.5, help="Horizon probability level (default: 0.5).")
@@ -292,7 +292,7 @@ def main() -> None:
 
         meta = json.loads((fitdir / "meta.json").read_text(encoding="utf-8"))
         trend = str(meta.get("theta_trend", "none"))
-        if trend not in {"linear", "quadratic", "quadratic_pos", "sqrt", "log1p", "xpow", "t50_logistic"}:
+        if trend not in {"linear", "quadratic", "quadratic_pos", "sqrt", "log1p", "xpow", "t50_logistic", "theta_logistic"}:
             raise SystemExit(f"{spec}: expected linear/quadratic/xpow/t50_logistic trend, got theta_trend={trend!r}")
 
         K = int(meta.get("theta_trend_K", 0)) if "theta_trend_K" in meta else 0
@@ -339,6 +339,8 @@ def main() -> None:
             cols += ["gamma0", "gamma1", "a_pow"]
         elif trend == "t50_logistic":
             cols += ["log_t_low", "log_delta_t", "a_t", "b_t"]
+        elif trend == "theta_logistic":
+            cols += ["theta_min", "theta_range", "a_logis", "b_logis"]
         draws_df, _, _ = read_draws_subset(fitdir, draws=args.draws, seed=args.seed, cols=cols)
 
         alpha = draws_df["alpha"].to_numpy(dtype=float)
@@ -418,6 +420,20 @@ def main() -> None:
             z[ok2] = rhs[ok2] ** (1.0 / a_pow[ok2])
             x_cross = np.full_like(theta_star, np.nan, dtype=float)
             x_cross[ok2] = x_min - x_eps + x_scale * z[ok2]
+            x_cross = np.where(np.isfinite(x_cross) & (x_cross >= x_start), x_cross, np.nan)
+        elif trend == "theta_logistic":
+            theta_min_d = draws_df["theta_min"].to_numpy(dtype=float)
+            theta_range_d = draws_df["theta_range"].to_numpy(dtype=float)
+            a_logis = draws_df["a_logis"].to_numpy(dtype=float)
+            b_logis = draws_df["b_logis"].to_numpy(dtype=float)
+            theta_star = alpha + kappa * (target_logt - mean_log_t_hours) + adj
+            # Solve: theta_min + theta_range * sigmoid(a + b*x) = theta_star
+            # => sigmoid(a + b*x) = (theta_star - theta_min) / theta_range
+            # => x = (logit(y) - a) / b
+            y = (theta_star - theta_min_d) / theta_range_d
+            ok = np.isfinite(y) & (y > 0) & (y < 1) & np.isfinite(b_logis) & (b_logis > 1e-9)
+            x_cross = np.full_like(y, np.nan, dtype=float)
+            x_cross[ok] = (np.log(y[ok] / (1.0 - y[ok])) - a_logis[ok]) / b_logis[ok]
             x_cross = np.where(np.isfinite(x_cross) & (x_cross >= x_start), x_cross, np.nan)
         else:
             gamma0 = draws_df["gamma0"].to_numpy(dtype=float)

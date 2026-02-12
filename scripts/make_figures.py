@@ -263,6 +263,8 @@ def read_draws_subset(fitdir: Path, draws: int, seed: int) -> tuple[pd.DataFrame
         extra_cols = ["gamma0", "gamma1", "a_pow", "sigma_theta"]
     elif trend == "t50_logistic":
         extra_cols = ["log_t_low", "log_delta_t", "a_t", "b_t", "sigma_theta"]
+    elif trend == "theta_logistic":
+        extra_cols = ["theta_min", "theta_range", "a_logis", "b_logis", "sigma_theta"]
     elif trend in {"singularity", "singularity_nolinear"}:
         if trend == "singularity":
             extra_cols = ["gamma0", "gamma1", "c_sing", "alpha_sing", "eta_tstar", "sigma_theta"]
@@ -558,6 +560,14 @@ def main() -> None:
         s_curve = logistic(a_t[:, None] + b_t[:, None] * x_grid2[None, :])
         t50 = t_low[:, None] + (t_high[:, None] - t_low[:, None]) * s_curve
         theta_grid = alpha[:, None] + kappa[:, None] * (np.log(t50) - mean_log_t_hours)
+        b_draws = None
+    elif theta_trend_mode == "theta_logistic":
+        theta_min = draws_df["theta_min"].to_numpy(dtype=float)
+        theta_range = draws_df["theta_range"].to_numpy(dtype=float)
+        a_logis = draws_df["a_logis"].to_numpy(dtype=float)
+        b_logis = draws_df["b_logis"].to_numpy(dtype=float)
+        s_curve = logistic(a_logis[:, None] + b_logis[:, None] * x_grid2[None, :])
+        theta_grid = theta_min[:, None] + theta_range[:, None] * s_curve
         b_draws = None
     elif theta_trend_mode == "singularity":
         x_date_max = float(meta.get("x_date_max", float("nan")))

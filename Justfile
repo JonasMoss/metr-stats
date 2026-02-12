@@ -31,6 +31,9 @@ fit-trend-xpow:
 fit-trend-t50-logistic:
   python scripts/fit_time_model.py --theta-trend t50_logistic
 
+fit-trend-theta-logistic:
+  python scripts/fit_time_model.py --theta-trend theta_logistic
+
 fit-trend-singularity:
   python scripts/fit_time_model.py --theta-trend singularity
 
@@ -72,6 +75,9 @@ figs-blog-quadratic-pos:
 figs-blog-t50-logistic:
   python scripts/make_figures.py --spec time_irt__theta_t50_logistic --label-preset blog
 
+figs-blog-theta-logistic:
+  python scripts/make_figures.py --spec time_irt__theta_theta_logistic --label-preset blog
+
 figs-singularity:
   python scripts/make_figures.py --spec time_irt__theta_singularity
 
@@ -92,6 +98,9 @@ diag-xpow:
 
 diag-t50-logistic:
   python scripts/diagnostics.py --spec time_irt__theta_t50_logistic
+
+diag-theta-logistic:
+  python scripts/diagnostics.py --spec time_irt__theta_theta_logistic
 
 diag-singularity:
   python scripts/diagnostics.py --spec time_irt__theta_singularity
