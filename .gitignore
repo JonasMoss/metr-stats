@@ -9,6 +9,7 @@ __pycache__/
 # Artifacts (fits, figures, temporary outputs)
 outputs/
 docs/
+experiments/
 
 # Quarto artifacts
 .quarto/
