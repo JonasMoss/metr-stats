@@ -6,6 +6,10 @@ __pycache__/
 *~
 \#*\#
 
+# Claude Code
+CLAUDE.md
+.claude/
+
 # Artifacts (fits, figures, temporary outputs)
 outputs/
 docs/
@@ -15,10 +19,7 @@ experiments/
 .quarto/
 *_files/
 *.quarto_ipynb
-appendix/assets/
-appendix/_generated/
-appendix/*.html
-appendix/diagnostics_files/
+appendix/
 
 # Blog artifacts
 blog/_generated/
