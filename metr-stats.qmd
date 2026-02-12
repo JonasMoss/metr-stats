@@ -196,9 +196,9 @@ plt.rcParams.update(
 I reanalyze the METR task data using a Bayesian item response theory model instead of METR's two-stage approach. Main findings:
 
 * Four trajectory shapes (linear, quadratic, power-law, saturating) fit the existing data equally well but diverge dramatically on forecasts. For instance, 95% credible interval for 125 year-crossing is 2031-01 – 2033-10 for linear and 2028-02 – 2031-09 for quadratic.
-* Doubling time under the standard linear (exponential growth) model: ~4.1 months, which is similar to METRs estimate. (FIXME 95% credibility interval: 3.7–4.6).
-* Tasks of the same human-time length vary a lot in difficulty. This matters because using "80% success on a typical task of length X" instead of "80% expected success on a random task of length X" makes the predicted crossing dates roughly an order of magnitude smaller. The marginal (random task) version is what's practically relevant but it's considerably less impressive.
-* Credible intervals throughout are probably too narrow because I treat human task times as known rather than estimating them as latent variables. This could be a big deal!
+* Doubling time under the standard linear (exponential growth) model: ~4.1 months, which is similar to METRs estimate. (95% credible interval: 3.5–5.0).
+* Tasks of the same human-time length vary a lot in difficulty. This matters because using "80% success on a typical task of length X" instead of "80% expected success on a random task of length X" makes the predicted crossing dates roughly an order of magnitude smaller. The marginal (random task) version is what's practically relevant but it's less impressive.
+* Credible intervals throughout are probably too narrow because I treat human task times as known rather than estimating them as latent variables. I'm doing this because I don't have access to the raw data, but it could be a big deal!
 
 ## METR data
 
@@ -231,13 +231,21 @@ for label, spec_name in SPECS.items():
 # Model-specific horizon points.
 hpts = load_horizon_points(list(SPECS.values())[0]).query("p == 0.5")
 ax.errorbar(
-    hpts["release_date"], hpts["t_hours_q50"],
-    yerr=np.vstack([
-        hpts["t_hours_q50"] - hpts["t_hours_q025"],
-        hpts["t_hours_q975"] - hpts["t_hours_q50"],
-    ]),
-    fmt="o", color="black", ecolor="0.35",
-    elinewidth=1.5, capsize=3, alpha=0.7, zorder=5,
+    hpts["release_date"],
+    hpts["t_hours_q50"],
+    yerr=np.vstack(
+        [
+            hpts["t_hours_q50"] - hpts["t_hours_q025"],
+            hpts["t_hours_q975"] - hpts["t_hours_q50"],
+        ]
+    ),
+    fmt="o",
+    color="black",
+    ecolor="0.35",
+    elinewidth=1.5,
+    capsize=3,
+    alpha=0.7,
+    zorder=5,
     markersize=5,
 )
 
@@ -353,79 +361,6 @@ plt.show()
 
 Diagnostics aside, this is what $\sigma_b \approx 1.44$ looks like in practice. There's not too much curvature, so I think the log-linear form is, though there might be some curvature from -2 and out. There is though a weird cluster at the left, which I think can be explained by very easy tasks containing virtually no information about difficulty. I don't think it's worth inspecting these further. Overall this looks a-ok to me.
 
-Using 
-Here's every model in the dataset, with no trajectory imposed. Notice that the credible intervals are pretty tight on this scale. The hard part isn't estimation of model capabilities, it's extrapolation. 
-
-```{python}
-#| label: fig-horizon-baseline
-#| fig-cap: "Per-model 50%-success horizon. Each point is a model; bars show 95% credible intervals."
-#| echo: false
-
-BASELINE_DIR = Path("outputs/runs/20260206_120053/figures")
-bpts = pd.read_csv(BASELINE_DIR / "horizon_points.csv")
-bpts["release_date"] = pd.to_datetime(bpts["release_date"])
-bpts = bpts.query("p == 0.5").sort_values("release_date")
-
-MODEL_LABELS = {
-    "gpt_4": "GPT-4",
-    "gpt_4_1106_inspect": "GPT-4 Turbo (1106)",
-    "gpt_4_turbo_inspect": "GPT-4 Turbo",
-    "gpt_4o_inspect": "GPT-4o",
-    "claude_3_opus_inspect": "Claude 3 Opus",
-    "claude_3_5_sonnet_20240620_inspect": "Sonnet 3.5",
-    "claude_3_5_sonnet_20241022_inspect": "Sonnet 3.5 (new)",
-    "o1_preview": "o1-preview",
-    "o1_inspect": "o1",
-    "claude_3_7_sonnet_inspect": "Claude 3.7",
-    "o3_inspect": "o3",
-    "claude_4_opus_inspect": "Opus 4",
-    "gpt_5_2025_08_07_inspect": "GPT-5",
-    "claude_opus_4_5_inspect": "Opus 4.5",
-}
-
-fig, ax = plt.subplots(figsize=(9.5, 4.0))
-
-ax.errorbar(
-    bpts["release_date"], bpts["t_hours_q50"],
-    yerr=np.vstack([
-        bpts["t_hours_q50"] - bpts["t_hours_q025"],
-        bpts["t_hours_q975"] - bpts["t_hours_q50"],
-    ]),
-    fmt="o", color="C0", ecolor="0.35",
-    elinewidth=1.5, capsize=3, alpha=0.85, zorder=5,
-    markersize=6,
-)
-
-# Label each point.
-for _, r in bpts.iterrows():
-    lbl = MODEL_LABELS.get(r["model"], r["model"])
-    ax.annotate(
-        lbl,
-        (r["release_date"], r["t_hours_q50"]),
-        textcoords="offset points",
-        xytext=(6, 4),
-        fontsize=6.5,
-        color="0.35",
-        va="bottom",
-    )
-
-ax.set_yscale("log")
-ax.set_xlabel("Release date")
-ax.set_ylabel("50%-success horizon")
-
-# Duration ticks (mimic METR style).
-tick_hours = np.array([4/3600, 36/3600, 6/60, 1.0, 10.0])
-ax.set_yticks(tick_hours)
-ax.set_yticklabels([_format_duration_hours(float(t)) for t in tick_hours])
-ax.grid(True, which="major", axis="y", linestyle="--", linewidth=0.8, alpha=0.25)
-
-ax.xaxis.set_major_locator(mdates.YearLocator())
-ax.xaxis.set_major_formatter(mdates.DateFormatter("%Y"))
-fig.tight_layout()
-plt.show()
-```
-
-
 ## Modeling model ability
 
 By directly modeling model ability we can try out shapes like exponential, subexponential, superexponential, saturating, and singularity. Forecasts depend a lot on which shape you pick, and the data doesn't really tell you much, so it's not easy to choose between them. Your priors rule here.
@@ -435,7 +370,7 @@ $$
 \theta_i \sim \mathcal{N}\bigl(f(x_i;\, \gamma),\; \sigma_\theta\bigr)
 $$
 
-I'm still using a random effect for model ability here, since nobody seriously thinks every model released on the same date must be equally capable. I'm looking at four shapes for $f$:
+I'm still using a random effect for model ability here, since nobody seriously thinks every model released on the same date must be equally capable. I'm looking at four shapes for $f$:[Quadratic is the simplest choice of superexponential function. One might spin up a story in its favour but using it is somewhat arbitrary. The power-law is the easiest function that can be both super- and subexponential, and the saturating model I've included because why?]{.aside}
 
 | Model | $f(x)$ | Params | Intuition |
 |:------|:-------|:------:|:----------|
@@ -446,18 +381,16 @@ I'm still using a random effect for model ability here, since nobody seriously t
 
 If METR's GitHub repo contained all the historical data I would also have tried a piecewise linear with a breakpoint around the time of o1, which visually fits the original METR graphs better than a plain linear fit. But since the available data doesn't go that far back I don't need to, and the value of including those early points in a forecasting exercise is questionable anyway. Getting hold of the latest data points is more important.
 
-(Quadratic and power law are simple choices for super- and subexponential growth, but I suspect the story would be similar for any other reasonably flexible function --- the data looks roughly linear and we just need to fit that well enough.)
-
 All models share the same 2PL likelihood and task parameters ($b_j$, $a_j$,
 $\alpha$, $\kappa$, $\sigma_b$). Only the $\theta$-prior changes.
 
 ### Implied doubling time
 
-I get $4.1$ months (80% CrI: 3.7--4.6), which is similar METR's v1.1 estimate of ~4.3 months. Of course, doubling time only makes sense for the linear model above, as the doubling time of the other models varies with time.
+I get $4.1$ months (95% CrI: 3.5--5.0), which is similar METR's v1.1 estimate of ~4.3 months. Of course, doubling time only makes sense for the linear model above, as the doubling time of the other models varies with time.
 
 ```{python}
 #| label: fig-doubling-time
-#| fig-cap: "Posterior distribution of the horizon doubling time under the linear model. Median: 4.1 months (80% CrI: 3.7–4.6 months)."
+#| fig-cap: "Posterior distribution of the horizon doubling time under the linear model. Median: 4.1 months (95% CrI: 3.5–5.0 months)."
 #| echo: false
 
 from scipy.stats import gaussian_kde
@@ -470,15 +403,15 @@ dt_months = draws["doubling_time_years"].values * 12
 kde = gaussian_kde(dt_months, bw_method="silverman")
 x = np.linspace(dt_months.min() - 0.3, dt_months.max() + 0.3, 400)
 
-q10, q50, q90 = np.percentile(dt_months, [10, 50, 90])
+q025, q50, q975 = np.percentile(dt_months, [2.5, 50, 97.5])
 
 fig, ax = plt.subplots(figsize=(7, 3.2))
 ax.fill_between(x, kde(x), alpha=0.15, color="C0")
 ax.plot(x, kde(x), color="C0", linewidth=2)
 ax.axvline(q50, color="black", linewidth=1.5, label=f"Median = {q50:.1f} months")
-ax.axvline(q10, color="black", linewidth=1, linestyle="--", alpha=0.6,
-           label=f"80% CrI: [{q10:.1f}, {q90:.1f}]")
-ax.axvline(q90, color="black", linewidth=1, linestyle="--", alpha=0.6)
+ax.axvline(q025, color="black", linewidth=1, linestyle="--", alpha=0.6,
+           label=f"95% CrI: [{q025:.1f}, {q975:.1f}]")
+ax.axvline(q975, color="black", linewidth=1, linestyle="--", alpha=0.6)
 ax.set_xlabel("Doubling time (months)")
 ax.set_ylabel("Posterior density")
 ax.legend(fontsize=9)
@@ -737,12 +670,14 @@ for trend, label in _labels80.items():
 h2 = '<table style="width:100%">\n<thead>\n'
 h2 += '<tr><th rowspan="2">Trend</th>'
 h2 += '<th colspan="2" style="text-align:center;border-bottom:none">Typical</th>'
-h2 += '<th colspan="2" style="text-align:center;border-bottom:none">Marginal</th></tr>\n'
-h2 += '<tr><th>Mean</th><th>95% CrI</th><th>Mean</th><th>95% CrI</th></tr>\n'
-h2 += '</thead>\n<tbody>\n'
+h2 += (
+    '<th colspan="2" style="text-align:center;border-bottom:none">Marginal</th></tr>\n'
+)
+h2 += "<tr><th>Mean</th><th>95% CrI</th><th>Mean</th><th>95% CrI</th></tr>\n"
+h2 += "</thead>\n<tbody>\n"
 for label, td, tc, md, mc in rows_125:
-    h2 += f'<tr><td>{label}</td><td>{td}</td><td>{tc}</td><td>{md}</td><td>{mc}</td></tr>\n'
-h2 += '</tbody>\n</table>'
+    h2 += f"<tr><td>{label}</td><td>{td}</td><td>{tc}</td><td>{md}</td><td>{mc}</td></tr>\n"
+h2 += "</tbody>\n</table>"
 Markdown(h2)
 ```
 
@@ -750,14 +685,15 @@ Make of this what you want, but let's go through one scenario. Let's say I'm a b
 
 ## Modeling $t_j$
 
-The main weakness of this analysis is treating task times $t_j$ as known. METR takes the geometric mean of (usually 2-3) successful human baselines per task and treats it as a known quantity, discarding uncertainty. But we can model $t_j$ as a latent variable informed by the reported baselines. This would be straightforward in Stan and give more honest picture of what the data actually support, as all credible intervals will be widened. 
+The main weakness of this analysis is treating task times $t_j$ as known. METR takes the geometric mean of (usually 2-3) successful human baselines per task and treats it as a known quantity, discarding uncertainty. But we can model $t_j$ as a latent variable informed by the reported baselines. This would be straightforward to implement in Stan, and would give a more honest picture of what the data actually support, as all credible intervals will be widened. 
 
-It is possible that we'd observe smaller differences between the typical and marginal plots at $80\%$ horizon if we model the $t_j$ s properly, as perhaps more of the variance would be absorbed by the actual real uncertainty in $t_j$. I'm not sure, but getting hold of the data or doing short simulation would help.  
+It's probable that we'd observe smaller differences between the typical and marginal plots at $80\%$ horizon by modelling the $t_j$ s properly, as perhaps more of the variance would be absorbed by the actual real uncertainty in $t_j$. I'm not sure, but getting hold of the data or doing short simulation would help.  
 
-When modelling $t_j$ I would probably try a Weibull distribution instead of log-normal, since the log-normal is more typically more heavy-tailed and the Weibull has stronger intuitive justification as a general distribution of task completion times.
+When modelling $t_j$ I would also try a Weibull distribution instead of log-normal, since the log-normal is more typically more heavy-tailed and the Weibull has stronger intuitive justification as a general distribution of task completion times. 
 
 ## Notes and remarks
 
 * I also tried a finite-time singularity model of the form $\theta \sim \gamma_0 + \gamma_1 x + c / (t^* - x)^\alpha$. The posterior on the singularity date $t^*$ didn't really move from the prior at all. This is no surprise, it just means the data are uniformative.
 * There are loads of other knobs one could turn. Perhaps you could introduce a discrimination parameter that varies by model and task, together with a hierarchical prior. Perhaps you could make discrimination a function of time, etc. I doubt any these would change the picture much, if at all. The model fits well enough as is, even if the uncertainty is likely too small. That said, I don't want to dissuade anyone from trying!
+* The power-law model does in principle support both sub- and superexponential trajectories ($\alpha < 1$ and $\alpha > 1$ respectively, where $\alpha = 1$ is linear model). The posterior puts $P(\alpha < 1) \approx 4\%$, so the data does not support subexponential growth. At least when using this model.
 * (Claude point): Having Claude code or Codex write up graphs and code is amazing, but it is ... irritating to back and clean up their "accidental" rewriting of my text. That said, any LLM-ese in this post is my responsibility.
