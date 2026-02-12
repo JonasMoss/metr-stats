@@ -8,6 +8,7 @@ __pycache__/
 
 # Artifacts (fits, figures, temporary outputs)
 outputs/
+docs/
 
 # Quarto artifacts
 .quarto/
@@ -21,3 +22,4 @@ appendix/diagnostics_files/
 # Blog artifacts
 blog/_generated/
 metr-stats.html
+
