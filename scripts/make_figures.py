@@ -28,7 +28,7 @@ def parse_args() -> argparse.Namespace:
         "--spec",
         type=str,
         default=None,
-        help="Model spec folder under --runs-root (default: infer from --fitdir or use time_irt__theta_none).",
+        help="Model spec folder under --runs-root (default: infer from --fitdir or use time_irt__theta_linear).",
     )
     p.add_argument("--outdir", type=Path, default=None, help="Directory to write figures/CSVs (default: run figures dir).")
 
@@ -254,22 +254,15 @@ def read_draws_subset(fitdir: Path, draws: int, seed: int) -> tuple[pd.DataFrame
 
     extra_cols: list[str] = []
     trend = str(meta.get("theta_trend", "none"))
-    if trend in {"linear", "quadratic", "quadratic_pos", "sqrt", "log1p"}:
+    if trend in {"linear", "quadratic_pos"}:
         K = int(meta.get("theta_trend_K", 0))
         if K <= 0:
             raise SystemExit("meta.json indicates theta_trend but theta_trend_K is missing/invalid")
         extra_cols = ["gamma0", "sigma_theta"] + [f"gamma.{k}" for k in range(1, K + 1)]
     elif trend == "xpow":
         extra_cols = ["gamma0", "gamma1", "a_pow", "sigma_theta"]
-    elif trend == "t50_logistic":
-        extra_cols = ["log_t_low", "log_delta_t", "a_t", "b_t", "sigma_theta"]
     elif trend == "theta_logistic":
         extra_cols = ["theta_min", "theta_range", "a_logis", "b_logis", "sigma_theta"]
-    elif trend in {"singularity", "singularity_nolinear"}:
-        if trend == "singularity":
-            extra_cols = ["gamma0", "gamma1", "c_sing", "alpha_sing", "eta_tstar", "sigma_theta"]
-        else:
-            extra_cols = ["gamma0", "c_sing", "alpha_sing", "eta_tstar", "sigma_theta"]
     usecols = scalar_cols + theta_cols + extra_cols
 
     chain_files = chain_csv_files(fitdir)
@@ -322,7 +315,7 @@ def horizon_hours_approx(
     adj = (lp / a_eff) * np.sqrt(1.0 + c * ((a_eff * sigma_b) ** 2))
     b_star = theta - adj
     z = mean_log_t_hours + (b_star - alpha) / kappa  # log(hours)
-    # Avoid overflow in extreme extrapolations (e.g. singularity trend).
+    # Avoid overflow in extreme extrapolations.
     z = np.clip(z, -80.0, 80.0)
     return np.exp(z)
 
@@ -358,7 +351,7 @@ def main() -> None:
     args = parse_args()
 
     if args.fitdir is None:
-        spec = args.spec or "time_irt__theta_none"
+        spec = args.spec or "time_irt__theta_linear"
         run_id = args.run_id or (args.runs_root / spec / "LATEST").read_text(encoding="utf-8").strip()
         args.fitdir = args.runs_root / spec / run_id / "fit"
     else:
@@ -497,45 +490,19 @@ def main() -> None:
     x_grid2 = np.linspace(x_min, x_max, 160)
     date_grid = (date0 + pd.to_timedelta(x_grid2 * 365.25, unit="D")).normalize()
 
-    if theta_trend_mode == "none":
-        # Per-draw OLS: theta = a + b*x
-        x0 = float(np.mean(x))
-        xc = x - x0
-        denom = float(np.sum(xc * xc))
-        if denom <= 0:
-            raise SystemExit("Release dates have zero variance; can't fit trend.")
-        b_draws = (theta_sub @ xc) / denom  # (S,)
-        a_draws = theta_sub.mean(axis=1) - b_draws * x0  # (S,)
-        theta_grid = a_draws[:, None] + b_draws[:, None] * x_grid2[None, :]  # (S, G)
-    elif theta_trend_mode in {"linear", "quadratic", "quadratic_pos", "sqrt", "log1p"}:
+    if theta_trend_mode in {"linear", "quadratic_pos"}:
         K = int(meta.get("theta_trend_K", 0))
-        if theta_trend_mode in {"linear", "sqrt", "log1p"} and K != 1:
+        if theta_trend_mode == "linear" and K != 1:
             raise SystemExit(f"Expected theta_trend_K=1 for linear, got {K}")
-        if theta_trend_mode in {"quadratic", "quadratic_pos"} and K != 2:
-            raise SystemExit(f"Expected theta_trend_K=2 for quadratic, got {K}")
+        if theta_trend_mode == "quadratic_pos" and K != 2:
+            raise SystemExit(f"Expected theta_trend_K=2 for quadratic_pos, got {K}")
         gamma0 = draws_df["gamma0"].to_numpy(dtype=float)
         gamma = np.column_stack([draws_df[f"gamma.{k}"].to_numpy(dtype=float) for k in range(1, K + 1)])  # (S, K)
         if K == 1:
-            if theta_trend_mode == "sqrt":
-                x_min = float(meta.get("theta_trend_x_min", float("nan")))
-                eps = float(meta.get("theta_trend_eps", 1e-6))
-                if not np.isfinite(x_min):
-                    raise SystemExit("meta.json missing theta_trend_x_min for sqrt trend")
-                z = np.sqrt(np.clip(x_grid2 - x_min + eps, a_min=eps, a_max=None))
-                Xg = z[None, :]
-            elif theta_trend_mode == "log1p":
-                x_min = float(meta.get("theta_trend_x_min", float("nan")))
-                scale = float(meta.get("theta_trend_scale", 1.0))
-                if not np.isfinite(x_min):
-                    raise SystemExit("meta.json missing theta_trend_x_min for log1p trend")
-                z = np.clip(x_grid2 - x_min, a_min=0.0, a_max=None) / max(scale, 1e-9)
-                Xg = np.log1p(z)[None, :]
-            else:
-                Xg = x_grid2[None, :]  # (1, G)
+            Xg = x_grid2[None, :]  # (1, G)
         else:
             Xg = np.vstack([x_grid2, x_grid2 * x_grid2])  # (2, G)
         theta_grid = gamma0[:, None] + gamma @ Xg  # (S, G)
-        # For downstream doubling-time calculations, define an "effective" b_draws(x) if needed.
         b_draws = None
     elif theta_trend_mode == "xpow":
         gamma0 = draws_df["gamma0"].to_numpy(dtype=float)
@@ -550,17 +517,6 @@ def main() -> None:
         feat = z[None, :] ** a_pow[:, None]
         theta_grid = gamma0[:, None] + gamma1[:, None] * feat
         b_draws = None
-    elif theta_trend_mode == "t50_logistic":
-        log_t_low = draws_df["log_t_low"].to_numpy(dtype=float)
-        log_delta_t = draws_df["log_delta_t"].to_numpy(dtype=float)
-        a_t = draws_df["a_t"].to_numpy(dtype=float)
-        b_t = draws_df["b_t"].to_numpy(dtype=float)
-        t_low = np.exp(log_t_low)
-        t_high = t_low + np.exp(log_delta_t)
-        s_curve = logistic(a_t[:, None] + b_t[:, None] * x_grid2[None, :])
-        t50 = t_low[:, None] + (t_high[:, None] - t_low[:, None]) * s_curve
-        theta_grid = alpha[:, None] + kappa[:, None] * (np.log(t50) - mean_log_t_hours)
-        b_draws = None
     elif theta_trend_mode == "theta_logistic":
         theta_min = draws_df["theta_min"].to_numpy(dtype=float)
         theta_range = draws_df["theta_range"].to_numpy(dtype=float)
@@ -568,34 +524,6 @@ def main() -> None:
         b_logis = draws_df["b_logis"].to_numpy(dtype=float)
         s_curve = logistic(a_logis[:, None] + b_logis[:, None] * x_grid2[None, :])
         theta_grid = theta_min[:, None] + theta_range[:, None] * s_curve
-        b_draws = None
-    elif theta_trend_mode == "singularity":
-        x_date_max = float(meta.get("x_date_max", float("nan")))
-        if not np.isfinite(x_date_max):
-            raise SystemExit("meta.json missing x_date_max for singularity trend")
-        gamma0 = draws_df["gamma0"].to_numpy(dtype=float)
-        gamma1 = draws_df["gamma1"].to_numpy(dtype=float)
-        c_sing = draws_df["c_sing"].to_numpy(dtype=float)
-        alpha_sing = draws_df["alpha_sing"].to_numpy(dtype=float)
-        eta_tstar = draws_df["eta_tstar"].to_numpy(dtype=float)
-        t_star = x_date_max + np.exp(eta_tstar) + 0.25
-        denom = t_star[:, None] - x_grid2[None, :]
-        # Avoid invalid pow for denom<=0: mask those points as NaN so plots break where singularity occurs.
-        denom_safe = np.where(denom > 1e-6, denom, np.nan)
-        theta_grid = gamma0[:, None] + gamma1[:, None] * x_grid2[None, :] + c_sing[:, None] / (denom_safe ** alpha_sing[:, None])
-        b_draws = None
-    elif theta_trend_mode == "singularity_nolinear":
-        x_date_max = float(meta.get("x_date_max", float("nan")))
-        if not np.isfinite(x_date_max):
-            raise SystemExit("meta.json missing x_date_max for singularity trend")
-        gamma0 = draws_df["gamma0"].to_numpy(dtype=float)
-        c_sing = draws_df["c_sing"].to_numpy(dtype=float)
-        alpha_sing = draws_df["alpha_sing"].to_numpy(dtype=float)
-        eta_tstar = draws_df["eta_tstar"].to_numpy(dtype=float)
-        t_star = x_date_max + np.exp(eta_tstar) + 0.25
-        denom = t_star[:, None] - x_grid2[None, :]
-        denom_safe = np.where(denom > 1e-6, denom, np.nan)
-        theta_grid = gamma0[:, None] + c_sing[:, None] / (denom_safe ** alpha_sing[:, None])
         b_draws = None
     else:
         raise SystemExit(f"Unknown theta_trend in meta.json: {theta_trend_mode!r}")
@@ -647,7 +575,7 @@ def main() -> None:
     )
 
     # For quadratic trends, also provide a date-dependent curve (useful as a diagnostic).
-    if theta_trend_mode in {"quadratic", "quadratic_pos"}:
+    if theta_trend_mode == "quadratic_pos":
         gamma1 = draws_df["gamma.1"].to_numpy(dtype=float)
         gamma2 = draws_df["gamma.2"].to_numpy(dtype=float)
         slope_theta_grid = gamma1[:, None] + 2.0 * gamma2[:, None] * x_grid2[None, :]  # (S, G)
@@ -766,7 +694,7 @@ def main() -> None:
                 "doubling_time_years_q10": float(np.nanquantile(dt_draws, 0.10)),
                 "doubling_time_years_q50": float(np.nanquantile(dt_draws, 0.50)),
                 "doubling_time_years_q90": float(np.nanquantile(dt_draws, 0.90)),
-                "note": ("quadratic: reported at mean release date" if theta_trend_mode == "quadratic" else ""),
+                "note": ("quadratic: reported at mean release date" if theta_trend_mode == "quadratic_pos" else ""),
             }
         )
 
@@ -959,7 +887,7 @@ def main() -> None:
     fig.savefig(args.outdir / "doubling_time_posterior.png", dpi=200)
     plt.close(fig)
 
-    if theta_trend_mode in {"quadratic", "quadratic_pos"} and (args.outdir / "doubling_time_curve.csv").exists():
+    if theta_trend_mode == "quadratic_pos" and (args.outdir / "doubling_time_curve.csv").exists():
         dt_curve = pd.read_csv(args.outdir / "doubling_time_curve.csv")
         fig, ax = plt.subplots(1, 1, figsize=(9.5, 4.8))
         ax.plot(pd.to_datetime(dt_curve["date"]), dt_curve["dt_years_q50"], color="C2", linewidth=2, label="median")

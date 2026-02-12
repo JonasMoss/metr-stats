@@ -20,7 +20,7 @@ def parse_args() -> argparse.Namespace:
     )
     p.add_argument("--fitdir", type=Path, default=None, help="Fit directory containing meta.json and CmdStan CSVs.")
     p.add_argument("--runs-root", type=Path, default=Path("outputs/runs"))
-    p.add_argument("--spec", type=str, default="time_irt__theta_none")
+    p.add_argument("--spec", type=str, default="time_irt__theta_linear")
     p.add_argument("--run-id", type=str, default=None, help="Defaults to --runs-root/<spec>/LATEST.")
     p.add_argument("--outdir", type=Path, default=None, help="Output directory (default: run diagnostics dir).")
 
@@ -73,13 +73,11 @@ def read_draws_subset(fitdir: Path, draws: int, seed: int) -> tuple[pd.DataFrame
 
     extra_cols: list[str] = []
     trend = str(meta.get("theta_trend", "none"))
-    if trend in {"linear", "quadratic", "quadratic_pos", "sqrt", "log1p"}:
+    if trend in {"linear", "quadratic_pos"}:
         K = int(meta.get("theta_trend_K", 0))
         extra_cols = ["gamma0", "sigma_theta"] + [f"gamma.{k}" for k in range(1, K + 1)]
     elif trend == "xpow":
         extra_cols = ["gamma0", "gamma1", "a_pow", "sigma_theta"]
-    elif trend == "t50_logistic":
-        extra_cols = ["log_t_low", "log_delta_t", "a_t", "b_t", "sigma_theta"]
 
     usecols = scalar_cols + theta_cols + extra_cols + ll_cols
     chain_files = chain_csv_files(fitdir)

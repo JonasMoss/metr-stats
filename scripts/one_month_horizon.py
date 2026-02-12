@@ -292,13 +292,13 @@ def main() -> None:
 
         meta = json.loads((fitdir / "meta.json").read_text(encoding="utf-8"))
         trend = str(meta.get("theta_trend", "none"))
-        if trend not in {"linear", "quadratic", "quadratic_pos", "sqrt", "log1p", "xpow", "t50_logistic", "theta_logistic"}:
-            raise SystemExit(f"{spec}: expected linear/quadratic/xpow/t50_logistic trend, got theta_trend={trend!r}")
+        if trend not in {"linear", "quadratic_pos", "xpow", "theta_logistic"}:
+            raise SystemExit(f"{spec}: expected linear/quadratic_pos/xpow/theta_logistic trend, got theta_trend={trend!r}")
 
         K = int(meta.get("theta_trend_K", 0)) if "theta_trend_K" in meta else 0
-        if trend in {"linear", "sqrt", "log1p"} and K not in {0, 1}:
+        if trend == "linear" and K not in {0, 1}:
             raise SystemExit(f"{spec}: expected K=1, got {K}")
-        if trend in {"quadratic", "quadratic_pos"} and K not in {0, 2}:
+        if trend == "quadratic_pos" and K not in {0, 2}:
             raise SystemExit(f"{spec}: expected K=2, got {K}")
 
         date0 = pd.to_datetime(str(meta["theta_trend_date0"])).normalize()
@@ -331,14 +331,12 @@ def main() -> None:
 
         # Columns we need.
         cols = ["alpha", "kappa", "sigma_b", "mu_loga"]
-        if trend in {"linear", "quadratic", "quadratic_pos", "sqrt", "log1p"}:
+        if trend in {"linear", "quadratic_pos"}:
             if K <= 0:
-                K = 1 if trend in {"linear", "sqrt", "log1p"} else 2
+                K = 1 if trend == "linear" else 2
             cols += ["gamma0"] + [f"gamma.{k}" for k in range(1, K + 1)]
         elif trend == "xpow":
             cols += ["gamma0", "gamma1", "a_pow"]
-        elif trend == "t50_logistic":
-            cols += ["log_t_low", "log_delta_t", "a_t", "b_t"]
         elif trend == "theta_logistic":
             cols += ["theta_min", "theta_range", "a_logis", "b_logis"]
         draws_df, _, _ = read_draws_subset(fitdir, draws=args.draws, seed=args.seed, cols=cols)
@@ -356,53 +354,7 @@ def main() -> None:
             c = (math.pi**2) / 3.0
             adj = (lp / a_eff) * np.sqrt(1.0 + c * ((a_eff * sigma_b) ** 2))
 
-        if trend == "t50_logistic":
-            if abs(float(args.p) - 0.5) > 1e-12:
-                raise SystemExit("t50_logistic trend is defined in terms of the t50 horizon; use --p 0.5.")
-            t_low = np.exp(draws_df["log_t_low"].to_numpy(dtype=float))
-            t_high = t_low + np.exp(draws_df["log_delta_t"].to_numpy(dtype=float))
-            a_t = draws_df["a_t"].to_numpy(dtype=float)
-            b_t = draws_df["b_t"].to_numpy(dtype=float)
-            # Solve t_low + (t_high-t_low)*sigmoid(a + b x) = threshold for x >= x_start.
-            y = (thr_hours - t_low) / (t_high - t_low)
-            ok = np.isfinite(y) & (y > 0) & (y < 1) & np.isfinite(b_t) & (b_t > 1e-9)
-            x_cross = np.full_like(y, np.nan, dtype=float)
-            x_cross[ok] = (np.log(y[ok] / (1.0 - y[ok])) - a_t[ok]) / b_t[ok]
-            x_cross = np.where(np.isfinite(x_cross) & (x_cross >= x_start), x_cross, np.nan)
-        elif trend == "sqrt":
-            gamma0 = draws_df["gamma0"].to_numpy(dtype=float)
-            gamma1 = draws_df["gamma.1"].to_numpy(dtype=float)
-            x_min = float(meta.get("theta_trend_x_min", float("nan")))
-            eps = float(meta.get("theta_trend_eps", 1e-6))
-            if not np.isfinite(x_min):
-                raise SystemExit(f"{spec}: meta.json missing theta_trend_x_min for sqrt trend")
-            # Target theta for the requested horizon.
-            theta_star = alpha + kappa * (target_logt - mean_log_t_hours) + adj
-            # Solve gamma0 + gamma1*sqrt(x-x_min+eps) = theta_star.
-            ok = np.isfinite(gamma1) & (gamma1 > 1e-9)
-            z = np.full_like(theta_star, np.nan, dtype=float)
-            z[ok] = (theta_star[ok] - gamma0[ok]) / gamma1[ok]
-            ok2 = ok & np.isfinite(z) & (z >= 0)
-            x_cross = np.full_like(theta_star, np.nan, dtype=float)
-            x_cross[ok2] = x_min - eps + (z[ok2] ** 2)
-            x_cross = np.where(np.isfinite(x_cross) & (x_cross >= x_start), x_cross, np.nan)
-        elif trend == "log1p":
-            gamma0 = draws_df["gamma0"].to_numpy(dtype=float)
-            gamma1 = draws_df["gamma.1"].to_numpy(dtype=float)
-            x_min = float(meta.get("theta_trend_x_min", float("nan")))
-            scale = float(meta.get("theta_trend_scale", 1.0))
-            if not np.isfinite(x_min):
-                raise SystemExit(f"{spec}: meta.json missing theta_trend_x_min for log1p trend")
-            scale = max(scale, 1e-9)
-            theta_star = alpha + kappa * (target_logt - mean_log_t_hours) + adj
-            ok = np.isfinite(gamma1) & (gamma1 > 1e-9)
-            z = np.full_like(theta_star, np.nan, dtype=float)
-            z[ok] = (theta_star[ok] - gamma0[ok]) / gamma1[ok]
-            ok2 = ok & np.isfinite(z) & (z >= 0)
-            x_cross = np.full_like(theta_star, np.nan, dtype=float)
-            x_cross[ok2] = x_min + scale * (np.exp(z[ok2]) - 1.0)
-            x_cross = np.where(np.isfinite(x_cross) & (x_cross >= x_start), x_cross, np.nan)
-        elif trend == "xpow":
+        if trend == "xpow":
             gamma0 = draws_df["gamma0"].to_numpy(dtype=float)
             gamma1 = draws_df["gamma1"].to_numpy(dtype=float)
             a_pow = draws_df["a_pow"].to_numpy(dtype=float)

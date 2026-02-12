@@ -21,6 +21,10 @@ experiments/
 *.quarto_ipynb
 appendix/
 
+# Compiled Stan binaries (CmdStanPy regenerates these)
+stan/*
+!stan/*.stan
+
 # Blog artifacts
 blog/_generated/
 metr-stats.html

@@ -30,21 +30,9 @@ def parse_args() -> argparse.Namespace:
     )
     p.add_argument(
         "--theta-trend",
-        choices=[
-            "none",
-            "linear",
-            "quadratic",
-            "quadratic_pos",
-            "sqrt",
-            "log1p",
-            "xpow",
-            "t50_logistic",
-            "theta_logistic",
-            "singularity",
-            "singularity_nolinear",
-        ],
-        default="none",
-        help="Optional joint ability trend θ(d) inside Stan (default: none).",
+        choices=["linear", "quadratic_pos", "xpow", "theta_logistic"],
+        default="linear",
+        help="Joint ability trend θ(d) inside Stan (default: linear).",
     )
     p.add_argument(
         "--stan",
@@ -169,33 +157,14 @@ def build_release_x(
 def build_theta_trend_design(
     model_names: list[str], benchmark_yaml: Path, theta_trend: str
 ) -> tuple[int, np.ndarray, np.ndarray, dict[str, object]]:
-    if theta_trend == "none":
-        raise ValueError("build_theta_trend_design called with theta_trend=none")
     x, has_date, meta0 = build_release_x(model_names, benchmark_yaml)
 
     if theta_trend == "linear":
         K = 1
         X = x[:, None]
-    elif theta_trend in {"quadratic", "quadratic_pos"}:
+    elif theta_trend == "quadratic_pos":
         K = 2
         X = np.column_stack([x, x * x])
-    elif theta_trend == "sqrt":
-        dated_x = x[has_date == 1]
-        x_min = float(np.min(dated_x))
-        eps = 1e-6
-        z = np.sqrt(np.clip(x - x_min + eps, a_min=eps, a_max=None))
-        K = 1
-        X = z[:, None]
-        meta0 = {**meta0, "theta_trend_x_min": x_min, "theta_trend_eps": eps}
-    elif theta_trend == "log1p":
-        dated_x = x[has_date == 1]
-        x_min = float(np.min(dated_x))
-        scale = 1.0  # 1 year; keeps feature in a reasonable numeric range
-        z = np.clip(x - x_min, a_min=0.0, a_max=None) / scale
-        feat = np.log1p(z)
-        K = 1
-        X = feat[:, None]
-        meta0 = {**meta0, "theta_trend_x_min": x_min, "theta_trend_scale": scale}
     else:
         raise SystemExit(f"Unknown theta_trend: {theta_trend!r}")
 
@@ -241,66 +210,43 @@ def main() -> None:
         "theta_high": float(args.theta_high),
     }
 
-    theta_trend_meta: dict[str, object] = {"theta_trend": "none"}
-    if args.theta_trend != "none":
-        if args.theta_trend in {"linear", "quadratic", "quadratic_pos", "sqrt", "log1p"}:
-            K, X_date, has_date, theta_trend_meta = build_theta_trend_design(model_names, args.benchmark_yaml, args.theta_trend)
-            stan_data.update(
-                {
-                    "K": int(K),
-                    "X_date": X_date.tolist(),
-                    "has_date": has_date.tolist(),
-                }
-            )
-        elif args.theta_trend == "xpow":
-            x_date, has_date, theta_trend_meta0 = build_release_x(model_names, args.benchmark_yaml)
-            dated = x_date[has_date == 1]
-            x_min = float(np.min(dated))
-            x_max = float(np.max(dated))
-            x_scale = float(max(x_max - x_min, 1.0))
-            x_eps = 1e-6
-            theta_trend_meta = {**theta_trend_meta0, "theta_trend": args.theta_trend, "theta_trend_x_min": x_min, "theta_trend_x_scale": x_scale, "theta_trend_x_eps": x_eps}
-            stan_data.update(
-                {
-                    "x_date": x_date.tolist(),
-                    "x_min": x_min,
-                    "x_scale": x_scale,
-                    "x_eps": x_eps,
-                    "has_date": has_date.tolist(),
-                }
-            )
-        elif args.theta_trend == "t50_logistic":
-            x_date, has_date, theta_trend_meta0 = build_release_x(model_names, args.benchmark_yaml)
-            theta_trend_meta = {"theta_trend": args.theta_trend, **theta_trend_meta0}
-            stan_data.update(
-                {
-                    "x_date": x_date.tolist(),
-                    "has_date": has_date.tolist(),
-                    "mean_log_t_hours": float(mean_log_t_hours),
-                }
-            )
-        elif args.theta_trend == "theta_logistic":
-            x_date, has_date, theta_trend_meta0 = build_release_x(model_names, args.benchmark_yaml)
-            theta_trend_meta = {"theta_trend": args.theta_trend, **theta_trend_meta0}
-            stan_data.update(
-                {
-                    "x_date": x_date.tolist(),
-                    "has_date": has_date.tolist(),
-                }
-            )
-        elif args.theta_trend in {"singularity", "singularity_nolinear"}:
-            x_date, has_date, theta_trend_meta0 = build_release_x(model_names, args.benchmark_yaml)
-            x_date_max = float(np.max(x_date[has_date == 1]))
-            theta_trend_meta = {"theta_trend": args.theta_trend, **theta_trend_meta0, "x_date_max": x_date_max}
-            stan_data.update(
-                {
-                    "x_date": x_date.tolist(),
-                    "x_date_max": x_date_max,
-                    "has_date": has_date.tolist(),
-                }
-            )
-        else:
-            raise SystemExit(f"Unknown --theta-trend {args.theta_trend!r}")
+    if args.theta_trend in {"linear", "quadratic_pos"}:
+        K, X_date, has_date, theta_trend_meta = build_theta_trend_design(model_names, args.benchmark_yaml, args.theta_trend)
+        stan_data.update(
+            {
+                "K": int(K),
+                "X_date": X_date.tolist(),
+                "has_date": has_date.tolist(),
+            }
+        )
+    elif args.theta_trend == "xpow":
+        x_date, has_date, theta_trend_meta0 = build_release_x(model_names, args.benchmark_yaml)
+        dated = x_date[has_date == 1]
+        x_min = float(np.min(dated))
+        x_max = float(np.max(dated))
+        x_scale = float(max(x_max - x_min, 1.0))
+        x_eps = 1e-6
+        theta_trend_meta = {**theta_trend_meta0, "theta_trend": args.theta_trend, "theta_trend_x_min": x_min, "theta_trend_x_scale": x_scale, "theta_trend_x_eps": x_eps}
+        stan_data.update(
+            {
+                "x_date": x_date.tolist(),
+                "x_min": x_min,
+                "x_scale": x_scale,
+                "x_eps": x_eps,
+                "has_date": has_date.tolist(),
+            }
+        )
+    elif args.theta_trend == "theta_logistic":
+        x_date, has_date, theta_trend_meta0 = build_release_x(model_names, args.benchmark_yaml)
+        theta_trend_meta = {"theta_trend": args.theta_trend, **theta_trend_meta0}
+        stan_data.update(
+            {
+                "x_date": x_date.tolist(),
+                "has_date": has_date.tolist(),
+            }
+        )
+    else:
+        raise SystemExit(f"Unknown --theta-trend {args.theta_trend!r}")
 
     run_id = args.run_id or datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
     spec = f"time_irt__theta_{args.theta_trend}"
@@ -309,22 +255,14 @@ def main() -> None:
     fit_dir.mkdir(parents=True, exist_ok=True)
 
     if args.stan is None:
-        if args.theta_trend == "none":
-            args.stan = Path("stan/2pl_time_loglinear.stan")
-        elif args.theta_trend in {"linear", "quadratic", "sqrt", "log1p"}:
+        if args.theta_trend == "linear":
             args.stan = Path("stan/2pl_time_loglinear_theta_trend.stan")
         elif args.theta_trend == "quadratic_pos":
             args.stan = Path("stan/2pl_time_loglinear_theta_trend_quadratic_pos.stan")
         elif args.theta_trend == "xpow":
             args.stan = Path("stan/2pl_time_loglinear_theta_trend_xpow.stan")
-        elif args.theta_trend == "t50_logistic":
-            args.stan = Path("stan/2pl_time_loglinear_theta_trend_t50_logistic.stan")
         elif args.theta_trend == "theta_logistic":
             args.stan = Path("stan/2pl_time_loglinear_theta_trend_theta_logistic.stan")
-        elif args.theta_trend == "singularity":
-            args.stan = Path("experiments/stan/2pl_time_loglinear_theta_singularity.stan")
-        elif args.theta_trend == "singularity_nolinear":
-            args.stan = Path("experiments/stan/2pl_time_loglinear_theta_singularity_nolinear.stan")
         else:
             raise SystemExit(f"Unknown --theta-trend {args.theta_trend!r}")
 

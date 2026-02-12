@@ -1,0 +1,7 @@
+cmdstanpy
+arviz
+pandas
+numpy
+matplotlib
+scipy
+pyyaml
