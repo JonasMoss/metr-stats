@@ -21,7 +21,7 @@
 
 \email{jonas.moss@bi.no}
 
-\abstract{We reanalyze the METR AI agent benchmark using a Bayesian two-parameter logistic item response theory model with task difficulty as a random effect. The model reveals a large gap between two definitions of task success at high thresholds. ``Marginal'' success, averaged over random tasks, is roughly an order of magnitude lower than ``typical'' success evaluated at mean difficulty. This distinction matters for AI safety forecasting but is invisible to methods that ignore task-level variation.}
+\abstract{We reanalyze the METR AI agent benchmark using a Bayesian 2PL item response theory model with task difficulty modeled as a random effect. ``Marginal'' success, averaged over the difficulty distribution, is roughly an order of magnitude lower than ``typical'' success at mean difficulty. This gap matters for AI safety forecasting but is invisible to methods that ignore task-level variation.}
 
 \keywords{Item response theory; AI benchmarks; Bayesian inference; AI safety.}
 
@@ -29,16 +29,16 @@
 
 \section{Introduction}
 
-How quickly are AI systems getting better at real-world tasks? This question has become urgent for governments and AI labs alike. The answer depends on benchmark data, and the most influential benchmark for autonomous AI agents is maintained by METR, a non-profit safety organization. Their ``time horizon'' analysis is cited in AI safety policy discussions around the world, and it drives how labs and regulators think about the pace of AI progress. Getting the statistical methodology right matters a great deal.
+How quickly are AI systems getting better at real-world tasks? This question has become urgent for governments and AI labs alike. The most influential benchmark for autonomous AI agents is maintained by METR, a non-profit safety organization. Their ``time horizon'' analysis drives how labs and regulators think about the pace of AI progress. Getting the methodology right matters.
 
-METR's published analysis by Kwa et al.\ (2025) proceeds in two stages. First, a per-model logistic regression estimates a time horizon $h_i$ for each AI model, defined as the task length where the model achieves 50\% success. Second, an OLS regression of $\log h_i$ on the model's release date yields a doubling time. This is effective but has limitations. The two stages are not jointly estimated, and all tasks of the same human completion time are treated as equally difficult.
+METR's analysis by Kwa et al.\ (2025) proceeds in two stages. First, a per-model logistic regression estimates a time horizon $h_i$ for each AI model, the task length where the model achieves 50\% success. Second, OLS regression of $\log h_i$ on release date yields a doubling time. This is effective but has limitations. The two stages are not jointly estimated, and all tasks of the same human completion time are treated as equally difficult.
 
-We address these issues with a Bayesian 2PL item response theory model, following the IRT tradition going back to Birnbaum (1968). Task difficulty is a random effect centered on log human time, so that tasks of identical length can differ in difficulty. Model ability follows a parametric trend over release date, and we compare four trajectory shapes. Our main finding is that the data cannot distinguish these shapes, but the model reveals a large gap between two reasonable definitions of success at the 80\% threshold.
+We fit a Bayesian 2PL item response theory model following Birnbaum (1968). Task difficulty is a random effect centered on log human time, so tasks of identical length can differ in difficulty. Model ability follows a parametric trend over release date. We compare four trajectory shapes. The data cannot distinguish them, but the model reveals a large gap between two definitions of success at the 80\% threshold.
 
 \section{Data}
 \label{moss:data}
 
-The METR benchmark tests AI agents on approximately 180 software-engineering tasks. These range from simple file lookups that humans complete in seconds to complex multi-step projects taking several hours. Each task has a known human completion time $t_j$. Fifteen AI models released between 2023 and 2025 attempt each task, and the outcome is binary. The dataset contains 3343 model-task observations after aggregating repeated runs into success counts $y_{ij}$ out of $n_{ij}$ attempts.
+The METR benchmark tests AI agents on about 180 software-engineering tasks ranging from simple file lookups completed in seconds to complex multi-step projects taking hours. Each task has a known human completion time $t_j$. Fifteen AI models released between 2023 and 2025 attempt each task, and the outcome is binary. The data contain 3343 model-task observations after aggregating repeated runs into counts $y_{ij}$ out of $n_{ij}$ attempts.
 
 \section{Model}
 
@@ -47,54 +47,45 @@ We use a two-parameter logistic IRT model. Each observation is modeled as
 y_{ij} &\sim \text{Bin}(n_{ij},\, p_{ij}), \label{moss:lik} \\
 p_{ij} &= \text{logit}^{-1}\!\big(a_j\,(\theta_i - b_j)\big), \label{moss:2pl}
 \end{align}
-where $\theta_i$ is the ability of model $i$, $b_j$ is the difficulty of task $j$, and $a_j > 0$ is the discrimination of task $j$.
-
-Task difficulty depends on human completion time $t_j$ plus a random component that captures the fact that tasks of the same length are not equally hard for AI. Discrimination is also given a hierarchical prior.
+where $\theta_i$ is the ability of model $i$, $b_j$ is the difficulty of task $j$, and $a_j > 0$ is the discrimination of task $j$. Task difficulty depends on human completion time $t_j$ plus a random component. Discrimination has a hierarchical prior. Model ability follows a trend over release date $x_i$ in years, centered at the mean.
 \begin{align}
 b_j &\sim \mathcal{N}(\alpha + \kappa \log t_j,\; \sigma_b), \label{moss:diff}\\
-\log a_j &\sim \mathcal{N}(\mu_a,\; \sigma_a). \label{moss:disc}
-\end{align}
-Model ability follows a time trend over release date $x_i$, measured in years and centered at the mean.
-\begin{align}
+\log a_j &\sim \mathcal{N}(\mu_a,\; \sigma_a), \label{moss:disc} \\
 \theta_i &\sim \mathcal{N}\!\big(f(x_i;\, \gamma),\; \sigma_\theta\big). \label{moss:trend}
 \end{align}
-We compare four shapes for $f$. Linear, quadratic with $\gamma_2 \geq 0$, power-law, and logistic saturation. Linear growth in $\theta$ corresponds to exponential growth in the time horizon, because $\theta$ enters through a logistic link. Models are fitted in Stan (Carpenter et al., 2017) with 4 chains of 1000 post-warmup draws each.
+We compare four shapes for $f$. Linear, quadratic with $\gamma_2 \geq 0$, power-law, and logistic saturation. Linear $\theta$ growth implies exponential horizon growth due to the logistic link. All models are fitted in Stan (Carpenter et al., 2017) with 4 chains of 1000 post-warmup draws.
 
 \section{Results}
 
-The four trajectory shapes are effectively indistinguishable by the data. ELPD-LOO estimates from Vehtari et al.\ (2017) are $-2191.9$ for linear, $-2195.9$ for saturating, $-2197.0$ for power-law, and $-2198.7$ for quadratic, all with standard errors around~70. Figure~\ref{moss:fig1} shows the 50\%-success horizon under all four trajectories. They agree over the observed period but diverge sharply in extrapolation. Under the linear model, the implied doubling time is about 7 months. That means AI capability on these tasks roughly doubles twice a year.
+The four trajectory shapes are effectively indistinguishable. ELPD-LOO estimates from Vehtari et al.\ (2017) span only 7 points, from $-2191.9$ for linear to $-2198.7$ for quadratic, all with standard errors around 70. Figure~\ref{moss:fig1} shows the 50\%-success horizon under all four trajectories. They agree over the observed period but diverge sharply in extrapolation. The linear model implies a doubling time of about 7 months, meaning AI capability roughly doubles twice a year.
 
 \begin{figure}[!ht]\centering
 \includegraphics[width=\textwidth]{Moss_horizon_fan.pdf}
 \caption{\label{moss:fig1} The 50\%-success horizon versus release date under four trajectory models, with 95\% credible bands. All four agree over the observed period but diverge in extrapolation.}
 \end{figure}
 
-The estimated difficulty variance $\hat\sigma_b \approx 1.44$ is large. With $\hat\kappa \approx 0.93$, one standard deviation of unexplained difficulty corresponds to an $\exp(\sigma_b / \kappa) \approx 4.7$-fold multiplier in equivalent task time. Tasks of the same human duration can differ enormously in how hard they are for AI, and this drives the main result below.
+The estimated difficulty variance $\hat\sigma_b \approx 1.44$ is large. With $\hat\kappa \approx 0.93$, one standard deviation of difficulty corresponds to an $\exp(\sigma_b / \kappa) \approx 4.7$-fold multiplier in equivalent task time.
 
 \section{Marginal versus typical success}
 \label{moss:marginal}
 
-There are two ways to define a success horizon. The \emph{typical} horizon asks at what task length a model achieves $p$\% success on a task of average difficulty for that length. This is roughly what METR computes. The \emph{marginal} horizon instead averages over the distribution of task difficulties, asking what the expected success rate is on a random task of that length.
-
-At $p = 50\%$ the two coincide by symmetry of the logistic function. But at $p = 80\%$ they diverge substantially. The marginal probability integrates over difficulty,
+There are two ways to define a success horizon. The \emph{typical} horizon asks at what task length a model achieves $p$\% success on a task of average difficulty for that length. This is roughly what METR computes. The \emph{marginal} horizon averages over the distribution of task difficulties at each length. At $p = 50\%$ the two coincide by symmetry of the logistic function. At $p = 80\%$ they diverge substantially. The marginal probability integrates over difficulty,
 $$
 \bar{p}(\theta, t) = \int \text{logit}^{-1}\!\big(a(\theta - b)\big)\,
 \varphi(b \mid \alpha + \kappa \log t,\, \sigma_b)\, db,
 $$
-and is always pulled toward 50\% relative to the typical value, because the logistic function is concave above its midpoint. The attenuation scales roughly as $\sqrt{1 + \tfrac{\pi^2}{3}(a\sigma_b)^2}$, giving about a factor of 3 in the logit scale. On the time axis, this translates to approximately an order of magnitude.
+and is always pulled toward 50\% relative to the typical value, because the logistic function is concave above its midpoint. The attenuation scales roughly as $\sqrt{1 + \tfrac{\pi^2}{3}(a\sigma_b)^2}$, giving about a factor of 3 in the logit scale. On the time axis this translates to approximately an order of magnitude.
 
-Figure~\ref{moss:fig2} shows this gap for both the linear and quadratic trajectories. Both panels show the same qualitative pattern, confirming robustness across trajectory assumptions. METR's published 80\%-success horizons implicitly condition on average difficulty, and so overstate capability. The gap is a level-shift rather than a change in slope, so it affects capability estimates more than it affects timeline forecasts.
+Figure~\ref{moss:fig2} shows this gap for the linear and quadratic trajectories. Both panels show the same qualitative pattern. METR's 80\% horizons implicitly condition on average difficulty, overstating capability. The gap is a level-shift rather than a slope change, so it affects capability estimates more than timeline forecasts.
 
 \begin{figure}[!ht]\centering
 \includegraphics[width=\textwidth]{Moss_marginal_typical.pdf}
-\caption{\label{moss:fig2} Horizon at 80\% success probability. The gray line is the 50\% reference. The blue dashed line is the 80\% typical horizon and the red solid line is the 80\% marginal horizon. The shaded red region highlights the gap, which is roughly an order of magnitude.}
+\caption{\label{moss:fig2} Horizon at 80\% success. Blue dashed is 80\% typical, red solid is 80\% marginal. The shaded gap is roughly an order of magnitude.}
 \end{figure}
 
 \section{Discussion}
 
-The marginal-versus-typical distinction matters for AI safety policy. Statements like ``AI can solve $p$\% of $t$-hour tasks'' are ambiguous unless one specifies whether the task has average difficulty or is a random draw from the population. The gap grows with difficulty variance and with distance from the 50\% threshold. For deployment decisions at high reliability thresholds, this difference can be substantial.
-
-Our analysis treats human completion times as known rather than latent, which likely understates posterior uncertainty. The METR task set may not represent real-world deployment scenarios, and the explanatory IRT framework of De Boeck and Wilson (2004) could accommodate additional task covariates.
+The marginal-versus-typical distinction matters for AI safety policy. Statements like ``AI can solve $p$\% of $t$-hour tasks'' are ambiguous unless one specifies whether the task has average difficulty or is a random draw. Our analysis treats human times as known rather than latent, likely understating uncertainty. The explanatory IRT framework of De Boeck and Wilson (2004) could accommodate additional task covariates.
 
 \references
 \begin{description}
@@ -104,17 +95,17 @@ Our analysis treats human completion times as known rather than latent, which li
      Addison-Wesley, 395\,--\,479.
 \item[Carpenter, B.\ et al.] (2017).
      Stan: a probabilistic programming language.
-     {\it Journal of Statistical Software}, {\bf 76}(1), 1\,--\,32.
+     {\it J.\ Stat.\ Softw.}, {\bf 76}(1), 1\,--\,32.
 \item[De Boeck, P.\ and Wilson, M.] (2004).
      {\it Explanatory Item Response Models}.
      New York: Springer.
 \item[Kwa, T., Bloomfield, A., Dao, L., Meinke, A.,]
-     and Rein, D.\ (2025). Measuring AI ability to complete long tasks.
-     arXiv:2503.14499.
+     and Rein, D.\ (2025). Measuring AI ability to complete
+     long tasks. arXiv:2503.14499.
 \item[Vehtari, A., Gelman, A., and Gabry, J.] (2017).
      Practical Bayesian model evaluation using leave-one-out
      cross-validation and WAIC.
-     {\it Statistics and Computing}, {\bf 27}(5), 1413\,--\,1432.
+     {\it Stat.\ Comput.}, {\bf 27}(5), 1413\,--\,1432.
 \end{description}
 
 \end{document}

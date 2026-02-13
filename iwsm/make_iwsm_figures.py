@@ -200,7 +200,7 @@ def make_figure2(outdir: Path) -> None:
     ]
     x_max = pd.Timestamp("2029-01-01")
 
-    fig, axes = plt.subplots(2, 1, figsize=(4.4, 3.2), sharex=True, sharey=True)
+    fig, axes = plt.subplots(1, 2, figsize=(4.4, 2.2), sharey=True)
 
     for ax, (panel_label, spec_name) in zip(axes, panel_specs):
         marg = load_horizon_grid(spec_name, kind="marginal")
@@ -211,7 +211,7 @@ def make_figure2(outdir: Path) -> None:
         g50 = g50[g50["date"] <= x_max]
         ax.plot(
             g50["date"], g50["t_hours_q50"],
-            color=COL_REF, linewidth=1.0, label="50% marginal",
+            color=COL_REF, linewidth=0.9, label="50%",
         )
 
         # 80% typical
@@ -219,7 +219,7 @@ def make_figure2(outdir: Path) -> None:
         g80t = g80t[g80t["date"] <= x_max]
         ax.plot(
             g80t["date"], g80t["t_hours_q50"],
-            color=COL_TYPICAL, linewidth=1.4, linestyle="--", label="80% typical",
+            color=COL_TYPICAL, linewidth=1.3, linestyle="--", label="80% typ.",
         )
 
         # 80% marginal
@@ -227,7 +227,7 @@ def make_figure2(outdir: Path) -> None:
         g80m = g80m[g80m["date"] <= x_max]
         ax.plot(
             g80m["date"], g80m["t_hours_q50"],
-            color=COL_MARGINAL, linewidth=1.4, label="80% marginal",
+            color=COL_MARGINAL, linewidth=1.3, label="80% marg.",
         )
 
         # Shade the gap
@@ -236,11 +236,11 @@ def make_figure2(outdir: Path) -> None:
         marg_vals = g80m["t_hours_q50"].values
         ax.fill_between(
             dates_common, typ_vals, marg_vals,
-            color=COL_GAP, alpha=0.12, label="Gap",
+            color=COL_GAP, alpha=0.12,
         )
 
         ax.set_yscale("log")
-        ax.set_title(panel_label, fontsize=9, loc="left")
+        ax.set_title(panel_label, fontsize=8, loc="left")
         ax.set_xlim(pd.Timestamp("2023-01-01"), x_max)
         ax.set_ylim(1e-3, 365 * 24)
 
@@ -249,13 +249,12 @@ def make_figure2(outdir: Path) -> None:
         ax.set_yticklabels([_format_duration_hours(float(t)) for t in tick_hours])
         ax.grid(True, which="major", axis="y", linestyle="--", linewidth=0.5, alpha=0.2)
 
-        ax.legend(loc="upper left", framealpha=0.9)
+        ax.xaxis.set_major_locator(mdates.YearLocator(2))
+        ax.xaxis.set_major_formatter(mdates.DateFormatter("%Y"))
+        ax.set_xlabel("Release date")
 
-    axes[-1].xaxis.set_major_locator(mdates.YearLocator())
-    axes[-1].xaxis.set_major_formatter(mdates.DateFormatter("%Y"))
-    axes[-1].set_xlabel("Release date")
+    axes[0].legend(loc="upper left", framealpha=0.9, fontsize=5.5)
     axes[0].set_ylabel("Horizon (human task time)")
-    axes[1].set_ylabel("Horizon (human task time)")
 
     fig.tight_layout(pad=0.4)
 
