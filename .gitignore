@@ -18,6 +18,9 @@ experiments/
 # Quarto artifacts
 .quarto/
 *_files/
+!metr-stats_files/
+metr-stats_files/*
+!metr-stats_files/figure-commonmark/
 *.quarto_ipynb
 appendix/
 

@@ -1,4 +1,5 @@
-# Four models that fit the METR data equally well: A Bayesian analysis
+# Forecasts from METR time horizons are prior-driven: A Bayesian
+analysis
 Jonas Moss
 2026-02-13
 
@@ -18,13 +19,13 @@ model.
   variation in task difficulty, so their horizons reflect a task of
   typical difficulty for its length. But tasks of the same length vary a
   lot in how hard they are, and at 80% success the hard ones dominate.
-  Curiously, this doesn’t affect timelines by a lot, as it’s just a
-  level-shift.
+  Curiously, this doesn’t affect timelines by more than ~1 year, as it’s
+  just a level-shift.
 - **We need data about the human times to quantify uncertainty.**
   Credible intervals throughout are too narrow because I treat human
   times as known rather than estimating them as latent variables. I’m
-  doing this because I don’t have access to all the raw data, and it
-  could be a big deal.
+  doing this because I don’t have access to all the raw data. This could
+  be a big deal, and could also affect the $80\%$ horizons.
 - Doubling time under the standard linear (exponential growth) model is
   ~4.1 months, which is similar to METR’s estimate (95% credible
   interval: 3.5–5.0, but see caveat above).
@@ -39,7 +40,7 @@ future.
 
 <div id="fig-horizon-fan">
 
-![](metr-stats_files/figure-commonmark/fig-horizon-fan-output-1.png)
+![](https://raw.githubusercontent.com/JonasMoss/metr-stats/main/metr-stats_files/figure-commonmark/fig-horizon-fan-output-1.png)
 
 Figure 1: 50%-success horizon vs. release date under four trajectory
 models.
@@ -50,7 +51,8 @@ The model selection scores known as ELPD-LOO differ by at most ~7
 points.[^1] Calibration is nearly identical, with Brier $\approx$ 0.066
 across the board. Your prior matters a lot here and has clear-cut
 consequences, as the models agree about the past but disagree strongly
-about the future.
+about the future. The current data on METR’s Github doesn’t include
+GPT-5.2 at the moment, if your’e missing it.
 
 These curves are fitted using a Bayesian item response theory model
 described below. Before describing it, let’s recall METR’s analysis of
@@ -64,14 +66,14 @@ the time horizon. They proceed in two stages:
     $h_i$ per model.
 
 2.  *An OLS trend.* Regress $\log h_i$ on release date. The slope gives
-    a doubling time of ~4.1 months.
+    a doubling time of ~4 months.
 
 This is good modeling and gets the main story right, but there are some
 non-standard choices. For instance, the slope $\beta_i$ is per-model
-rather than per-task (which is unusual in item response theory) and Stage
-1 uncertainty doesn’t propagate into Stage 2. It also treats every task
-of the same length as equally difficult and only considers one trajectory
-shape.
+rather than per-task (which is unusual in item response theory) and
+Stage 1 uncertainty doesn’t propagate into Stage 2 (METR uses the
+bootstrap). It also treats every task of the same length as equally
+difficult and only considers one trajectory shape.
 
 In this post I make a joint model, adjust some things to be more in line
 with standard practice, and ask what happens when you try different
@@ -85,7 +87,7 @@ contains everything you’ll want to know and your favorite LLM will
 figure it out for you. (All priors were chosen by Codex / Claude Code
 and appear reasonable enough.)
 
-## Psychometrics
+## The basic model
 
 The first stage of METR’s model is *almost* a 2-parameter logistic model
 (2PL), the workhorse of educational testing since the 1960s.
@@ -112,20 +114,19 @@ $$
 P(\text{success} \mid \text{model } i, \text{task } j) = \text{logit}^{-1}\bigl(a_j (\theta_i - b_j)\bigr)
 $$
 
-The reason this matters here is that METR tasks are like exam questions
-— they vary in both difficulty and how cleanly they separate strong from
-weak models — and we want to put all the models on a common ability
-scale.
+This matters here because METR tasks are like exam questions. They vary
+in both difficulty and how well they separate strong from weak models,
+and we want to put all the models on a common ability scale.
 
 ## Modeling difficulty
 
 Ability and difficulty parameters $\theta_i, b_j$ in the 2PL are hard to
 interpret. The scale is arbitrary, and it’s not clear what, for
 instance, a 0.1 increase in ability actually means. Or whether it would
-be better to take a log-transform of the parameter, etc. A really cool /
-tubular feature of the METR data is that each task comes with a human
-time, which gives us a natural, interpretable scale for difficulty. So
-let’s connect human time to difficulty first.
+be better to take a log-transform of the parameter, etc. The METR data
+is cool and and famous because each task comes with a human time, which
+gives us a natural and interpretable scale for difficulty. So let’s
+connect human time to difficulty first.
 
 $$
 b_j \sim \mathcal{N}(\alpha + \kappa \cdot \log t_j, \;\sigma_b)
@@ -133,7 +134,7 @@ $$
 
 Each task’s difficulty has a mean that depends on log human time, plus a
 random component to account for the fact that same-length tasks are not
-born equal. METR treats all tasks of identical length as equally hard.
+born equal. (METR treats all tasks of identical length as equally hard.)
 
 Since difficulty increases with log human time at rate $\kappa$, we can
 convert any difficulty value back into a time. Call it the *equivalent
@@ -143,15 +144,13 @@ it’s as hard as a typical 50-minute task. Formally, a task with human
 time $t$ and difficulty residual $u$ has equivalent difficulty time
 $t \cdot \exp(u / \kappa)$.
 
-I estimate $\sigma_b \approx 1.44$, which is large. One standard
-deviation of unexplained difficulty corresponds to a ~4.7x multiplier in
-equivalent difficulty time.[^2] A task that’s 1σ harder than average for
-its length is as hard as a typical task 4.7x longer. At $\pm 2\sigma$
-the range is roughly 22x, so tasks of identical human time can span a
-huge range in actual difficulty for AI. Compared to the simpler
-$b_j = \alpha + \kappa \cdot \log t_j$, the random effects widen the
-credible intervals, so this modeling choice matters for honest
-uncertainty.
+I estimate $\sigma_b \approx$ 1.44 (posterior median), which is quite
+large once we interpret it. One standard deviation of unexplained
+difficulty corresponds to a ~4.7x multiplier in equivalent difficulty
+time.[^2] A task that’s $1\sigma$ harder than average for its length is
+as hard as a typical task 4.7x longer. A task that’s $2\sigma$ harder is
+as hard as a typical task roughly 22x longer, so tasks of identical
+human time can span a huge range in actual difficulty for AI.
 
 Of course, this is a modeling choice that can be wrong. There’s no
 guarantee that difficulty is linear in $\log t_j$, so we need
@@ -160,7 +159,7 @@ diagnostic and explanation of what the random effect means in practice.
 
 <div id="fig-difficulty-variation">
 
-![](metr-stats_files/figure-commonmark/fig-difficulty-variation-output-1.png)
+![](https://raw.githubusercontent.com/JonasMoss/metr-stats/main/metr-stats_files/figure-commonmark/fig-difficulty-variation-output-1.png)
 
 Figure 2: Each dot is a task. The y-axis shows how much harder or easier
 the task is than a typical task of the same human time, expressed as a
@@ -170,9 +169,9 @@ multiplier in equivalent task time. Shaded bands show ±1σ and ±2σ.
 
 The y-axis is the difficulty multiplier from above. A dot at 5x means
 the task’s equivalent difficulty time is 5x its actual human time. Even
-within the ±1σ band, tasks of identical human time can differ by a
-factor of 22x in equivalent difficulty, so the practical spread is
-enormous.
+within the ±1σ band, tasks of identical human time can differ
+multiplicatively by a factor of 22x in equivalent difficulty, so the
+practical spread is enormous.
 
 There’s not too much curvature in the relationship between log human
 time and difficulty, so I think the log-linear form is decent, but it’s
@@ -216,8 +215,6 @@ is more important.
 All models share the same 2PL likelihood and task parameters ($b_j$,
 $a_j$, $\alpha$, $\kappa$, $\sigma_b$). Only the model for $\theta$
 changes.
-
-### Crossing thresholds
 
 Each model except the saturating model will cross any threshold given
 enough time. Here are posteriors for the 50% crossing across our models.
@@ -401,7 +398,7 @@ roughly an order of magnitude!
 
 <div id="fig-marginal-typical">
 
-![](metr-stats_files/figure-commonmark/fig-marginal-typical-output-1.png)
+![](https://raw.githubusercontent.com/JonasMoss/metr-stats/main/metr-stats_files/figure-commonmark/fig-marginal-typical-output-1.png)
 
 Figure 3: Horizon forecasts at 80% success probability. Left: linear
 trajectory. Right: quadratic (constrained).
@@ -419,11 +416,12 @@ The marginal horizon is the one that matters for practical purposes.
 “Typical” is optimistic since it only considers tasks of average
 difficulty for their length. The marginal accounts for the full spread
 of tasks, so it’s what you actually care about when predicting success
-on a random task of some length. That said, frontier performance of 5
-minutes does sound sort of short to me. I’m used to LLMs roughly
-one-shotting longer tasks than that, but it usually takes iteration.
-Just getting the context and subtle intentions right on the first try is
-hard, so I’m willing to believe this estimate is reasonable.
+on a random task of some length. That said, from the plot we see
+frontier performance of roughly 5 minutes, which does sound sort of
+short to me. I’m used to LLMs roughly one-shotting longer tasks than
+that, but it usually takes some iterations to get it just right. Getting
+the context and subtle intentions right on the first try is hard, so I’m
+willing to believe this estimate is reasonable.
 
 Anyway, the predicted crossing dates at 80% success are:
 
@@ -745,42 +743,26 @@ marginal formulation, my timeline has mean roughly November 2030, but
 the typical framework yields roughly January 2030 instead. And this
 isn’t too bad, just a difference of ~0.8 years! The linear model is
 similar, with timelines pushed out roughly 1.6 years. So, the wide
-marginal-typical gap doesn’t translate into big timeline gaps, as both
-trajectories have the same slope, just at a different level.
+marginal-typical gap doesn’t translate into *that* big timeline gaps, as
+both trajectories have the same “slope”, just at a different level.
 
 Let’s also have a look at METR’s actual numbers. They report an 80%
-horizon of around 15 minutes for Claude 3.7 Sonnet. Our typical 80%
-horizon for that model under the linear trend is 22 minutes, and the
-marginal is 1 minute—about 16x shorter than METR’s. Recall that METR’s
-methodology doesn’t model task-level difficulty variation at all, so
-their 80% horizon effectively reflects the typical tasks at each length
-rather than a random draw.
-
-## Implied doubling time
-
-I get 4.1 months (95% credible interval: 3.5–5.0), which is close to
-METR’s v1.1 estimate. Of course, doubling time only makes sense for the
-linear model above, as the doubling time of the other models varies with
-time.
-
-<div id="fig-doubling-time">
-
-![](metr-stats_files/figure-commonmark/fig-doubling-time-output-1.png)
-
-Figure 4: Posterior distribution of the horizon doubling time under the
-linear model.
-
-</div>
+horizon of around 15 minutes for Claude 3.7 Sonnet (in the original
+paper). Our typical 80% horizon for that model under the linear trend is
+about 22.0 min, and the marginal is about 1.0 min—roughly 16x shorter
+than METR’s. Recall that METR’s methodology doesn’t model task-level
+difficulty variation at all, so their 80% horizon effectively reflects
+the typical tasks at each length rather than a random draw.
 
 ## Modeling $t_j$
 
-The available METR data contains the geometric mean of (usually 2-3)
-successful human baselines per task, but not the individual times. Both
-METR’s analysis and mine treat this reported mean as a known quantity,
-discarding uncertainty. But we can model $t_j$ as a latent variable
-informed by the reported baselines. This is easy enough to do in Stan,
-and would give a more honest picture of what the data actually supports,
-as all credible intervals will be widened.
+The available METR data contains the geometric mean of (typically 2-3
+for HCAST) successful human baselines per task, but not the individual
+times. Both METR’s analysis and mine treat this reported mean as a known
+quantity, discarding uncertainty. But we can model $t_j$ as a latent
+variable informed by the reported baselines. This is easy enough to do
+in Stan, and would give a more honest picture of what the data actually
+supports, as all credible intervals will be widened.
 
 I’d expect smaller differences between the typical and marginal plots at
 $80\%$ horizon if the $t_j$ values were modeled properly, as more of the
@@ -799,7 +781,7 @@ grounds using its failure-rate interpretation.
   $\theta \sim \gamma_0 + \gamma_1 x + c / (t^* - x)^\alpha$. The
   posterior on the singularity date $t^*$ didn’t really move from the
   prior at all. This is no surprise. It just means the data is
-  uninformative.
+  uninformative about $t^\star$.
 - There are loads of other knobs you could turn. Perhaps you could
   introduce a discrimination parameter that varies by model and task,
   together with a hierarchical prior. Perhaps you could make
@@ -815,13 +797,26 @@ grounds using its failure-rate interpretation.
 - There’s plenty of best-practice stuff I haven’t done, such as prior
   sensitivity analysis. (But we have a lot of data, and I wouldn’t
   expect it to matter too much.)
+- The doubling time posterior median is 4.1 months (95% credible
+  interval: 3.5–5.0), which is close to METR’s v1.1 estimate. Of course,
+  doubling time only makes sense for the linear model above, as the
+  doubling time of the other models varies with time.
+
+<div id="fig-doubling-time">
+
+![](https://raw.githubusercontent.com/JonasMoss/metr-stats/main/metr-stats_files/figure-commonmark/fig-doubling-time-output-1.png)
+
+Figure 4: Posterior distribution of the horizon doubling time under the
+linear model.
+
+</div>
 
 [^1]: The ELPD-LOO estimates are: linear $-2191.9$ (SE $70.1$),
     saturating $-2195.9$ (SE $70.2$), power-law $-2197.0$ (SE $70.1$),
     quadratic $-2198.7$ (SE $70.0$).
 
 [^2]: The multiplier is $\exp(\sigma_b / \kappa)$ where
-    $\kappa \approx 0.93$.
+    $\kappa \approx 0.93$ is the posterior median
 
 [^3]: Quadratic is the simplest choice of superexponential function. You
     could spin a story in its favor, but using it is somewhat arbitrary.
