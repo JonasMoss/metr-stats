@@ -1,7 +1,7 @@
 ---
-title: "Four models that fit the METR data equally well"
+title: "Four models that fit the METR data equally well: A Bayesian analysis"
 author: "Jonas Moss"
-date: "2026-02-12"
+date: "2026-02-13"
 format:
   html:
     toc: true
@@ -227,6 +227,15 @@ _hpts_marg80 = load_horizon_points("time_irt__theta_linear", kind="marginal")
 _hpts_marg80 = _hpts_marg80.query("p == 0.8").sort_values("release_date")
 frontier_80_marg_minutes = _hpts_marg80.iloc[-1]["t_hours_q50"] * 60
 
+# Claude 3.7 Sonnet 80% horizons (for comparison with METR's reported ~15 min)
+_metr_sonnet37_80_min = 15.0
+_sonnet37_marg = _hpts_marg80[_hpts_marg80["model"].str.contains("3_7_sonnet")]
+_hpts_typ80 = load_horizon_points("time_irt__theta_linear", kind="typical")
+_hpts_typ80 = _hpts_typ80.query("p == 0.8")
+_sonnet37_typ = _hpts_typ80[_hpts_typ80["model"].str.contains("3_7_sonnet")]
+sonnet37_marg_min = _sonnet37_marg.iloc[0]["t_hours_q50"] * 60
+sonnet37_typ_min = _sonnet37_typ.iloc[0]["t_hours_q50"] * 60
+
 # Scenario: 125-year 80% crossing, marginal vs typical
 _df_marg_125_sc = pd.read_csv("blog/_generated/125y_horizon_p80_marginal.csv")
 _df_typ_125_sc = pd.read_csv("blog/_generated/125y_horizon_p80_typical.csv")
@@ -259,14 +268,14 @@ linear_diff_years = abs((_marg_lin_125 - _typ_lin_125).days) / 365.25
 ## TLDR
 I reanalyzed the METR task data using a Bayesian item response theory model. 
 
-* Four trajectory shapes (linear, quadratic, power-law, saturating) fit the existing data equally well but diverge on forecasts. For instance, the 95% credible interval for the 125-year crossing is `{python} cross125_lin_lo` – `{python} cross125_lin_hi` for linear and `{python} cross125_quad_lo` – `{python} cross125_quad_hi` for quadratic.
-* Doubling time under the standard linear (exponential growth) model is ~`{python} f"{dt_q50:.1f}"` months, which is similar to METR's estimate (95% credible interval: `{python} f"{dt_q025:.1f}"`–`{python} f"{dt_q975:.1f}"`).
-* Tasks of the same human time vary a lot in difficulty. This matters because at any given date, the typical horizon is roughly an order of magnitude longer than the marginal one. The marginal (random task) version is what's practically relevant, but it's less impressive than the typical version METR uses.
-* Credible intervals throughout are probably too narrow because I treat human times as known rather than estimating them as latent variables. I'm doing this because I don't have access to all the raw data, and it could be a big deal.
+* **The METR data cannot distinguish exponential from superexponential growth.** Four trajectory shapes (linear, quadratic, power-law, saturating) fit the existing data equally well but diverge on forecasts. For instance, the 95% credible interval for the 125-year crossing is `{python} cross125_lin_lo` – `{python} cross125_lin_hi` for linear and `{python} cross125_quad_lo` – `{python} cross125_quad_hi` for quadratic.
+* **METR's headline horizon numbers overstate current capability by roughly an order of magnitude at 80% success.** METR doesn't model variation in task difficulty, so their horizons reflect a task of typical difficulty for its length. But tasks of the same length vary a lot in how hard they are, and at 80% success the hard ones dominate.
+* **We need data about the human times to quantify uncertainty.** Credible intervals throughout are too narrow because I treat human times as known rather than estimating them as latent variables. I'm doing this because I don't have access to all the raw data, and it could be a big deal.
+* Doubling time under the standard linear (exponential growth) model is ~`{python} f"{dt_q50:.1f}"` months, which is similar to METR's estimate (95% credible interval: `{python} f"{dt_q025:.1f}"`–`{python} f"{dt_q975:.1f}"`, but see caveat above.).
 
 ## METR data
 
-Let's start with a plot that shouldn't be too surprising. Four reasonable models fit the [METR data](https://github.com/METR/eval-analysis-public/tree/main/reports/time-horizon-1-1/data/raw) equally well.[LOO scores differ by at most ~7 points and calibration is nearly identical, with Brier $\approx$ 0.066 across the board.]{.aside} They agree about the past but disagree strongly about the future.
+Let's start with a plot that shouldn't be too surprising. Four reasonable models fit the [METR data](https://github.com/METR/eval-analysis-public/tree/main/reports/time-horizon-1-1/data/raw) equally well. They agree about the past but disagree strongly about the future.
 
 
 ```{python}
@@ -365,6 +374,8 @@ fig.tight_layout()
 plt.show()
 ```
 
+The model selection scores known as ELPD-LOO differ by at most ~7 points.^[The ELPD-LOO estimates are: linear $-2191.9$ (SE $70.1$), saturating $-2195.9$ (SE $70.2$), power-law $-2197.0$ (SE $70.1$), quadratic $-2198.7$ (SE $70.0$).] Calibration is nearly identical, with Brier $\approx$ 0.066 across the board. Your prior matters a lot here and has clear-cut consequences, as the models agree about the past but disagree strongly about the future.
+
 These curves are fitted using a Bayesian item response theory model described below. Before describing it, let's recall METR's analysis of the time horizon. They proceed in two stages:
 
 1. *Per-model logistic regression.* For each model $i$, fit $P(\text{success}) = \sigma(\beta_i(\log h_i - \log t_j))$ where $t_j$ is human time for task $j$. Here $h_i$ is the task duration where the curve crosses 50%. When $t_j = h_i$, we get $\sigma(0) = 0.5$, a $50\%$ horizon. This gives a "horizon score" $h_i$ per model.
@@ -421,7 +432,7 @@ plt.show()
 
 Diagnostics aside, this is what $\sigma_b \approx 1.44$ looks like in practice. There's not too much curvature, so I think the log-linear form is decent, though there might be some curvature from -2 onward. There is, though, a weird cluster on the left, which I think can be explained by very easy tasks containing virtually no information about difficulty, but I don't think it's worth inspecting these further / removing points. Overall this looks A-OK to me.
 
-## Modeling model ability
+## Modeling ability over time
 
 By directly modeling model ability, we can try out shapes like exponential, subexponential, superexponential, saturating, and singularity. Forecasts depend a lot on which shape you pick, and the data doesn't really tell you much, so it's not easy to choose between them. Your priors rule here.
 
@@ -443,41 +454,6 @@ If METR's GitHub repo contained all the historical data, I would also have tried
 
 All models share the same 2PL likelihood and task parameters ($b_j$, $a_j$,
 $\alpha$, $\kappa$, $\sigma_b$). Only the model for $\theta$ changes.
-
-### Implied doubling time
-
-I get `{python} f"{dt_q50:.1f}"` months (95% credible interval: `{python} f"{dt_q025:.1f}"`--`{python} f"{dt_q975:.1f}"`), which is close to METR's v1.1 estimate. Of course, doubling time only makes sense for the linear model above, as the doubling time of the other models varies with time.
-
-```{python}
-#| label: fig-doubling-time
-#| fig-cap: "Posterior distribution of the horizon doubling time under the linear model."
-#| echo: false
-
-from scipy.stats import gaussian_kde
-
-draws = pd.read_csv(
-    figdir("time_irt__theta_linear") / "doubling_time_draws.csv"
-)
-dt_months = draws["doubling_time_years"].values * 12
-
-kde = gaussian_kde(dt_months, bw_method="silverman")
-x = np.linspace(dt_months.min() - 0.3, dt_months.max() + 0.3, 400)
-
-q025, q50, q975 = np.percentile(dt_months, [2.5, 50, 97.5])
-
-fig, ax = plt.subplots(figsize=(7, 3.2))
-ax.fill_between(x, kde(x), alpha=0.15, color="C0")
-ax.plot(x, kde(x), color="C0", linewidth=2)
-ax.axvline(q50, color="black", linewidth=1.5, label=f"Median = {q50:.1f} months")
-ax.axvline(q025, color="black", linewidth=1, linestyle="--", alpha=0.6,
-           label=f"95% CrI: [{q025:.1f}, {q975:.1f}]")
-ax.axvline(q975, color="black", linewidth=1, linestyle="--", alpha=0.6)
-ax.set_xlabel("Doubling time (months)")
-ax.set_ylabel("Posterior density")
-ax.legend(fontsize=9)
-fig.tight_layout()
-plt.show()
-```
 
 
 ### Crossing thresholds
@@ -549,7 +525,7 @@ Markdown(html50)
 ```
 
 
-### What about 80% success? 
+## Problems with 80% success
 
 Everything above uses 50% success, but METR also cares about 80% success and fits a separate model for that. We don't need to do that here since the model estimation doesn't really depend on success rates at all. We'll just calculate the 80%-success horizon using posterior draws instead.
 
@@ -681,9 +657,9 @@ plt.show()
 
 So, on the one hand, it's the variance ($\sigma_b \approx 1.44$) alone that causes these two plots to be necessary under our model. But on the other hand, the difference is not really a consequence of modeling. Some tasks of the same human time vary a lot in how hard they are for our models, and a phenomenon like this would happen for *any* model that's actually honest about this.
 
-I'd say the "correct" horizon to talk about is the marginal one. "Typical" is optimistic since it only considers tasks of average difficulty for their length. The marginal accounts for the full spread of tasks, so it's what you actually care about when predicting success on a random task of some length. That said, frontier performance of `{python} f"{frontier_80_marg_minutes:.0f}"` minutes does sound sort of short? I'm not sure. I ask Claude to do short coding and stats tasks frequently, and I do get subtly wrong responses. I usually attribute these to imprecise prompting, but I could be wrong.
+The marginal horizon is the one that matters for practical purposes. "Typical" is optimistic since it only considers tasks of average difficulty for their length. The marginal accounts for the full spread of tasks, so it's what you actually care about when predicting success on a random task of some length. That said, frontier performance of `{python} f"{frontier_80_marg_minutes:.0f}"` minutes does sound sort of short? I'm not sure. I ask Claude to do short coding and stats tasks frequently, and I do get subtly wrong responses. I usually attribute these to imprecise prompting, but I could be wrong.
 
-Anyway, the predicted crossing dates at 80% success:
+Anyway, the predicted crossing dates at 80% success are:
 
 ```{python}
 # | echo: false
@@ -757,7 +733,46 @@ h2 += "</tbody>\n</table>"
 Markdown(h2)
 ```
 
-Make of this what you will, but let's go through one scenario. Let's say I'm a believer in superexponential models with no preference between quadratic and power-law, so I have 50-50 weighting on those. Suppose also I believe that 125 years is the magic number for the auto-coder of [AI Futures](https://www.aifuturesmodel.com/), but I prefer $80\%$ to $50\%$ as the latter is too brittle. Then, using the arguably correct marginal formulation, my timeline has mean roughly `{python} scenario_marg_str`, but the typical framework yields roughly `{python} scenario_typ_str` instead. And this isn't too bad, just a difference of ~`{python} f"{scenario_diff_years:.1f}"` years! The linear model is similar, with timelines pushed out roughly `{python} f"{linear_diff_years:.1f}"` years.  
+Make of this what you will, but let's go through one scenario. Let's say I'm a believer in superexponential models with no preference between quadratic and power-law, so I have 50-50 weighting on those. Suppose also I believe that 125 years is the magic number for the auto-coder of [AI Futures](https://www.aifuturesmodel.com/), but I prefer $80\%$ to $50\%$ as the latter is too brittle. Then, using the arguably correct marginal formulation, my timeline has mean roughly `{python} scenario_marg_str`, but the typical framework yields roughly `{python} scenario_typ_str` instead. And this isn't too bad, just a difference of ~`{python} f"{scenario_diff_years:.1f}"` years! The linear model is similar, with timelines pushed out roughly `{python} f"{linear_diff_years:.1f}"` years.
+
+Let's also have a look at METR's actual numbers. They report an 80% horizon of around `{python} f"{_metr_sonnet37_80_min:.0f}"` minutes for Claude 3.7 Sonnet. Our typical 80% horizon for that model under the linear trend is `{python} f"{sonnet37_typ_min:.0f}"` minutes, and the marginal is `{python} f"{sonnet37_marg_min:.0f}"` minutes---about `{python} f"{_metr_sonnet37_80_min / sonnet37_marg_min:.0f}"`x lower than METR's. Recall that METR's methodology doesn't model task-level difficulty variation at all, so their 80% horizon effectively reflects the easiest tasks at each length rather than a random draw.
+
+## Implied doubling time
+
+I get `{python} f"{dt_q50:.1f}"` months (95% credible interval: `{python} f"{dt_q025:.1f}"`--`{python} f"{dt_q975:.1f}"`), which is close to METR's v1.1 estimate. Of course, doubling time only makes sense for the linear model above, as the doubling time of the other models varies with time.
+
+```{python}
+#| label: fig-doubling-time
+#| fig-cap: "Posterior distribution of the horizon doubling time under the linear model."
+#| echo: false
+
+from scipy.stats import gaussian_kde
+
+draws = pd.read_csv(
+    figdir("time_irt__theta_linear") / "doubling_time_draws.csv"
+)
+dt_months = draws["doubling_time_years"].values * 12
+
+kde = gaussian_kde(dt_months, bw_method="silverman")
+x = np.linspace(dt_months.min() - 0.3, dt_months.max() + 0.3, 400)
+
+q025, q50, q975 = np.percentile(dt_months, [2.5, 50, 97.5])
+
+fig, ax = plt.subplots(figsize=(7, 3.2))
+ax.fill_between(x, kde(x), alpha=0.15, color="C0")
+ax.plot(x, kde(x), color="C0", linewidth=2)
+ax.axvline(q50, color="black", linewidth=1.5, label=f"Median = {q50:.1f} months")
+ax.axvline(q025, color="black", linewidth=1, linestyle="--", alpha=0.6,
+           label=f"95% CrI: [{q025:.1f}, {q975:.1f}]")
+ax.axvline(q975, color="black", linewidth=1, linestyle="--", alpha=0.6)
+ax.set_xlabel("Doubling time (months)")
+ax.set_ylabel("Posterior density")
+ax.legend(fontsize=9)
+fig.tight_layout()
+plt.show()
+```
+
+
 
 ## Modeling $t_j$
 
