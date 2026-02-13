@@ -271,7 +271,7 @@ I reanalyzed the METR task data using a Bayesian item response theory model.
 * **The METR data cannot distinguish exponential from superexponential growth.** Four trajectory shapes (linear, quadratic, power-law, saturating) fit the existing data equally well but diverge on forecasts. For instance, the 95% credible interval for the 125-year crossing is `{python} cross125_lin_lo` – `{python} cross125_lin_hi` for linear and `{python} cross125_quad_lo` – `{python} cross125_quad_hi` for quadratic.
 * **METR's headline horizon numbers overstate current capability by roughly an order of magnitude at 80% success.** METR doesn't model variation in task difficulty, so their horizons reflect a task of typical difficulty for its length. But tasks of the same length vary a lot in how hard they are, and at 80% success the hard ones dominate. Curiously, this doesn't affect timelines by a lot, as it's just a level-shift.
 * **We need data about the human times to quantify uncertainty.** Credible intervals throughout are too narrow because I treat human times as known rather than estimating them as latent variables. I'm doing this because I don't have access to all the raw data, and it could be a big deal.
-* Doubling time under the standard linear (exponential growth) model is ~`{python} f"{dt_q50:.1f}"` months, which is similar to METR's estimate (95% credible interval: `{python} f"{dt_q025:.1f}"`–`{python} f"{dt_q975:.1f}"`, but see caveat above.).
+* Doubling time under the standard linear (exponential growth) model is ~`{python} f"{dt_q50:.1f}"` months, which is similar to METR's estimate (95% credible interval: `{python} f"{dt_q025:.1f}"`–`{python} f"{dt_q975:.1f}"`, but see caveat above).
 
 ## METR data
 
@@ -382,7 +382,7 @@ These curves are fitted using a Bayesian item response theory model described be
 
 2. *An OLS trend.* Regress $\log h_i$ on release date. The slope gives a doubling time of ~`{python} f"{dt_q50:.1f}"` months.
 
-This is good modeling and gets the main story right, but there are some non-standard choices. For instance, the slope $\beta_i$ is per-model rather than per-task (which is unusual) and Stage 2 uncertainty doesn't propagate back into Stage 1. It also treats every task of the same length as equally difficult and only considers one trajectory shape.
+This is good modeling and gets the main story right, but there are some non-standard choices. For instance, the slope $\beta_i$ is per-model rather than per-task (which is unusual) and Stage 1 uncertainty doesn't propagate into Stage 2. It also treats every task of the same length as equally difficult and only considers one trajectory shape.
 
 In this post I make a joint model, adjust some things to be more in line with standard practice, and ask what happens when you try different trajectory shapes. The post is somewhat technical, but not so god-awful that Claude won't be able to answer any question you have about the methodology. Models are fitted with Stan, 4 chains $\times$ 1000 post-warmup draws, with code available [here](https://github.com/JonasMoss/metr-stats). I intentionally won't go into details about technicalities, e.g. prior choices -- the code contains everything you'll want to know and your favorite LLM will figure it out for you. (All priors were chosen by Codex / Claude Code and appear reasonable enough.)
 
@@ -430,7 +430,7 @@ fig.tight_layout()
 plt.show()
 ```
 
-Diagnostics aside, this is what $\sigma_b \approx 1.44$ looks like in practice. There's not too much curvature, so I think the log-linear form is decent, though there might be some curvature from -2 onward. There is, though, a weird cluster on the left, which I think can be explained by very easy tasks containing virtually no information about difficulty, but I don't think it's worth inspecting these further / removing points. Overall this looks A-OK to me.
+This is what $\sigma_b \approx 1.44$ looks like in practice. There's not too much curvature, so I think the log-linear form is decent, though there might be some curvature from -2 onward. There is, though, a weird cluster on the left, which I think can be explained by very easy tasks containing virtually no information about difficulty, but I don't think it's worth inspecting these further / removing points. Overall this looks A-OK to me.
 
 ## Modeling ability over time
 
@@ -776,7 +776,7 @@ plt.show()
 
 ## Modeling $t_j$
 
-The available METR data contains the geometric mean of (usually 2-3) successful human baselines per task, but not the individual times. Both METR's analysis and mine treats this reported mean as a known quantity, discarding uncertainty. But we can model $t_j$ as a latent variable informed by the reported baselines. This is easy enough to do in Stan, and would give a more honest picture of what the data actually supports, as all credible intervals will be widened. 
+The available METR data contains the geometric mean of (usually 2-3) successful human baselines per task, but not the individual times. Both METR's analysis and mine treat this reported mean as a known quantity, discarding uncertainty. But we can model $t_j$ as a latent variable informed by the reported baselines. This is easy enough to do in Stan, and would give a more honest picture of what the data actually supports, as all credible intervals will be widened. 
 
 I'd expect smaller differences between the typical and marginal plots at $80\%$ horizon if the $t_j$ values were modeled properly, as more of the variance in the random effect would be absorbed by the uncertainty in $t_j$. I'm not sure how big the effect would be, but getting hold of the data or doing a short simulation would help.  
 
@@ -787,4 +787,4 @@ A technical point: When modeling $t_j$, I would also try a Weibull distribution 
 * I also tried a finite-time singularity model of the form $\theta \sim \gamma_0 + \gamma_1 x + c / (t^* - x)^\alpha$. The posterior on the singularity date $t^*$ didn't really move from the prior at all. This is no surprise. It just means the data is uninformative.
 * There are loads of other knobs you could turn. Perhaps you could introduce a discrimination parameter that varies by model and task, together with a hierarchical prior. Perhaps you could make discrimination a function of time, etc. I doubt any of these would change the picture much, if at all. The model fit is good enough as it is, even if the uncertainty is likely too small. That said, I don't want to dissuade anyone from trying!
 * The power-law model does in principle support both sub- and superexponential trajectories ($\alpha < 1$ and $\alpha > 1$, respectively, where $\alpha = 1$ is the linear model). The posterior puts $P(\alpha < 1) \approx 4\%$, so the data does not support subexponential growth. At least when using this model.
-* There's plenty of best-practice stuff I haven't done, such as prior sensitivity analysis. (But we have a lot of data, and I wouldn't expect them to matter too much.) 
+* There's plenty of best-practice stuff I haven't done, such as prior sensitivity analysis. (But we have a lot of data, and I wouldn't expect it to matter too much.) 
