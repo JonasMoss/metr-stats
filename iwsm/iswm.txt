@@ -1,0 +1,27 @@
+Call for Papers
+The call for papers is now open!
+
+Deadline (oral presentation): 15/02/2026 25/02/2026
+
+Deadline (poster presentation): 28/03/2026
+
+Please check the instructions below, contributions must be submitted through the Online Paper Submission Form
+
+Overview
+We are seeking novel and original contributions to the wider field of Statistical Modelling. Papers providing advances in the development of statistical models that are well motivated by a contemporary data scenario or application problem are particularly welcome. This includes contributions to estimation, inference, and computation for such modelling problems. Papers focusing on applications with important substantive implications as well as methodological issues are welcome, including new developments in Data Science and Machine Learning.
+
+Submissions by students and young researchers are particularly encouraged. IWSM provides a friendly and supportive environment to present your research at all stages of its development.
+
+In-conference awards. The Statistical Modelling Society awards prizes for Best Student Paper, Best Student Oral Presentation, and Best Student Poster Presentation. You do not need to apply for these awards as all PhD student contributions are eligible and automatically considered.
+
+TRAVEL AWARD: if you are eligible for financial support from the Statistical Modelling Society, please submit your application through the Travel Award Submission Form. For more information, please check the IWSM2026 Travel Award webpage.
+
+FOR NORWEGIAN CONTRIBUTORS: IWSM2026 conference proceedings will be counted as level 1 publications in Norway.
+
+Submission Details
+Create your 4-page paper using the following template: TEMPLATE_IWSM_2026.zip. You must follow the template and following list of guidelines very strictly or your submission will be ineligible: do not edit the TeX document preamble (i.e., the code before \begin{document} must not be changed); do not use external .bib-files; do not alter/add additional packages; do not create personal definitions/commands (e.g., using \newcommand or \def); do not change the font size; do write the paper in English; do use cross-references unique to the first author’s name, e.g., \label{johnsmith:likelihood}; do rename the template file to make it identifiable following the format “FirstAuthor_ShortPaperTitle.tex”. To ensure proper evaluation, short papers should be approximately (but no more than) 4 pages for the initial submission. We encourage authors to submit their figures in colors. However, wherever possible, efforts should be made to produce figures which are meaningfully readable also under black-and-white print.
+After creating your 4-page short paper with the provided style files, you must submit using the Online Paper Submission Form. Note that papers submitted as an “Oral Presentation” will be considered as either an oral presentation OR a poster presentation (as the total number of accepted oral presentations is limited), whereas papers submitted as a “Poster Presentation” will be considered ONLY as poster presentation.
+Once your paper has been submitted successfully, you will receive a confirmation email from debin@math.uio.no. If you do not receive this email, please check your junk/spam folder.
+Your submitted paper will be reviewed by members of the IWSM 2026 Scientific Committee and the outcome of this review will be provided with 4 – 6 weeks from the paper submission deadline.
+Following the review, accepted papers may be extended to 6 pages. For this final accepted version, we will need a .zip file containing all files necessary to compile your manuscript for inclusion into the IWSM 2026 Proceedings Volume. This will be an online PDF file that ultimately resides on the Statistical Modelling Society website.
+Legal considerations. Authors grant the IWSM 2026 organisers the right to publish their accepted contribution in the conference proceedings. However, copyright will always remain with the authors, who are free to publish the same material elsewhere after the workshop. It is the responsibility of the authors to ensure that publication in the conference proceedings does not conflict with any other pre-existing agreements. If the authors do not want to publish their contribution in the conference proceedings, they need to inform the organisers.

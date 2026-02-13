@@ -29,3 +29,12 @@ stan/*
 blog/_generated/
 metr-stats.html
 
+# IWSM generated files
+iwsm/*.pdf
+iwsm/*.aux
+iwsm/*.log
+iwsm/*.out
+
+# Scratch
+tmp/
+

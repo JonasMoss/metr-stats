@@ -26,3 +26,8 @@ fit:
 blog:
   mkdir -p outputs/.xdg_cache outputs/.xdg_data outputs/.deno
   XDG_CACHE_HOME=$PWD/outputs/.xdg_cache XDG_DATA_HOME=$PWD/outputs/.xdg_data DENO_DIR=$PWD/outputs/.deno quarto render metr-stats.qmd
+
+# Generate IWSM 2026 paper figures and compile LaTeX.
+iwsm:
+  python iwsm/make_iwsm_figures.py
+  cd iwsm && pdflatex Moss_marginal_typical_IRT.tex && pdflatex Moss_marginal_typical_IRT.tex

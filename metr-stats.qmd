@@ -10,6 +10,8 @@ format:
     code-tools: true
     theme: cosmo
     embed-resources: true
+  gfm:
+    variant: +footnotes+tex_math_dollars
 execute:
   echo: true
   warning: false
@@ -206,6 +208,14 @@ _dt_draws = pd.read_csv(
 dt_months = _dt_draws["doubling_time_years"].values * 12
 dt_q025, dt_q50, dt_q975 = np.percentile(dt_months, [2.5, 50, 97.5])
 
+# Key IRT parameters from linear model
+_meta_lin = load_meta("time_irt__theta_linear")
+_sp = _meta_lin["scalar_params"]
+sigma_b_q50 = _sp["sigma_b"]["q50"]
+kappa_q50 = _sp["kappa"]["q50"]
+mean_log_t_hours = _meta_lin["mean_log_t_hours"]
+difficulty_time_mult = np.exp(sigma_b_q50 / kappa_q50)
+
 # 125-year crossing dates for TLDR
 _df125_pre = pd.read_csv("blog/_generated/125y_horizon.csv")
 
@@ -382,7 +392,7 @@ These curves are fitted using a Bayesian item response theory model described be
 
 2. *An OLS trend.* Regress $\log h_i$ on release date. The slope gives a doubling time of ~`{python} f"{dt_q50:.1f}"` months.
 
-This is good modeling and gets the main story right, but there are some non-standard choices. For instance, the slope $\beta_i$ is per-model rather than per-task (which is unusual) and Stage 1 uncertainty doesn't propagate into Stage 2. It also treats every task of the same length as equally difficult and only considers one trajectory shape.
+This is good modeling and gets the main story right, but there are some non-standard choices. For instance, the slope $\beta_i$ is per-model rather than per-task (which is unusual in item response theory) and Stage 1 uncertainty doesn't propagate into Stage 2 (METR uses the bootstrap). It also treats every task of the same length as equally difficult and only considers one trajectory shape.
 
 In this post I make a joint model, adjust some things to be more in line with standard practice, and ask what happens when you try different trajectory shapes. The post is somewhat technical, but not so god-awful that Claude won't be able to answer any question you have about the methodology. Models are fitted with Stan, 4 chains $\times$ 1000 post-warmup draws, with code available [here](https://github.com/JonasMoss/metr-stats). I intentionally won't go into details about technicalities, e.g. prior choices -- the code contains everything you'll want to know and your favorite LLM will figure it out for you. (All priors were chosen by Codex / Claude Code and appear reasonable enough.)
 
@@ -404,44 +414,94 @@ The reason this matters here is that METR tasks are like exam questions — they
 
 ## Modeling difficulty
 
-Ability and difficulty parameters $\theta_i, b_j$ in the 2PL are hard to interpret. The scale is arbitrary, and it's not clear what, for instance, a 0.1 increase in ability actually means. Or whether it would be better to take a log-transform of the parameter, etc. A really cool / tubular feature of the METR data is that each task comes with a human time, which gives us a natural, interpretable scale for difficulty. So let's connect human time to difficulty first.
+Ability and difficulty parameters $\theta_i, b_j$ in the 2PL are hard to interpret. The scale is arbitrary, and it's not clear what, for instance, a 0.1 increase in ability actually means. Or whether it would be better to take a log-transform of the parameter, etc. A really cool / tubular feature of the METR data is that each task comes with a human time, which gives us a natural and interpretable scale for difficulty. So let's connect human time to difficulty first.
 
 $$
 b_j \sim \mathcal{N}(\alpha + \kappa \cdot \log t_j, \;\sigma_b)
 $$
 
-Each task's difficulty has a mean that depends on log human time, plus a random component to account for the fact that same-length tasks are not born equal. (METR treats all tasks of identical length as equally hard.) I've estimated $\sigma_b \approx 1.44$, which is quite large, and implies that two tasks with the same human time can differ by several units on the difficulty scale. Compared to the simpler $b_j = \alpha + \kappa \cdot \log t_j$, the random effects widen the credible intervals, so this modeling choice matters for honest uncertainty reporting.
+Each task's difficulty has a mean that depends on log human time, plus a random component to account for the fact that same-length tasks are not born equal. METR treats all tasks of identical length as equally hard.
 
-This is a modeling choice that can be wrong. There's no guarantee that difficulty is well-approximated by a linear function of $\log t_j$, so we need diagnostics to check. Here's a residual plot, which I find reasonable, with some minor caveats.
+Since difficulty increases with log human time at rate $\kappa$, we can convert any difficulty value back into a time. Call it the *equivalent difficulty time*. If a task takes humans 10 minutes but is unusually hard for AI, its equivalent difficulty time might be 50 minutes, meaning it's as hard as a typical 50-minute task. Formally, a task with human time $t$ and difficulty residual $u$ has equivalent difficulty time $t \cdot \exp(u / \kappa)$.
+
+I estimate $\sigma_b \approx$ `{python} f"{sigma_b_q50:.2f}"`, which is large. One standard deviation of unexplained difficulty corresponds to a ~`{python} f"{difficulty_time_mult:.1f}"`x multiplier in equivalent difficulty time.^[The multiplier is $\exp(\sigma_b / \kappa)$ where $\kappa \approx 0.93$.] A task that's 1σ harder than average for its length is as hard as a typical task `{python} f"{difficulty_time_mult:.1f}"`x longer. At $\pm 2\sigma$ the range is roughly `{python} f"{np.exp(2 * sigma_b_q50 / kappa_q50):.0f}"`x, so tasks of identical human time can span a huge range in actual difficulty for AI.
+
+Of course, this is a modeling choice that can be wrong. There's no guarantee that difficulty is linear in $\log t_j$, so we need diagnostics to check. The plot below does double duty as model diagnostic and explanation of what the random effect means in practice.
 
 ```{python}
-# | label: fig-difficulty-residuals
-# | fig-cap: "Each dot is a task. Residual difficulty (y-axis) measures how much harder or easier a task is for AI than predicted by human time alone."
+# | label: fig-difficulty-variation
+# | fig-cap: "Each dot is a task. The y-axis shows how much harder or easier the task is than a typical task of the same human time, expressed as a multiplier in equivalent task time. Shaded bands show ±1σ and ±2σ."
 # | echo: false
 
 resid = pd.read_csv(diagdir("time_irt__theta_linear") / "difficulty_residuals.csv")
 
-fig, ax = plt.subplots(figsize=(7, 3.5))
-ax.scatter(resid["x"], resid["u_hat"], s=18, alpha=0.45, color="C0", edgecolors="none")
-ax.axhline(0, color="gray", linestyle="--", linewidth=0.8, alpha=0.6)
-ax.set_xlabel(r"Centered log human time")
-ax.set_ylabel(r"Residual difficulty")
+# Transform to interpretable axes
+t_hours = np.exp(resid["x"].values + mean_log_t_hours)
+t_minutes = t_hours * 60
+time_multiplier = np.exp(resid["u_hat"].values / kappa_q50)
+
+time_mult_1sig = difficulty_time_mult
+time_mult_2sig = np.exp(2 * sigma_b_q50 / kappa_q50)
+
+fig, ax = plt.subplots(figsize=(8, 4.5))
+
+ax.scatter(t_minutes, time_multiplier, s=18, alpha=0.45, color="C0", edgecolors="none")
+ax.axhline(1.0, color="gray", linestyle="--", linewidth=0.8, alpha=0.6)
+
+# ±1σ band
+ax.axhspan(1 / time_mult_1sig, time_mult_1sig, color="C0", alpha=0.06, zorder=0)
+ax.axhline(time_mult_1sig, color="C0", linewidth=0.7, alpha=0.35, linestyle=":")
+ax.axhline(1 / time_mult_1sig, color="C0", linewidth=0.7, alpha=0.35, linestyle=":")
+
+# ±2σ band
+ax.axhspan(1 / time_mult_2sig, time_mult_2sig, color="C0", alpha=0.03, zorder=0)
+ax.axhline(time_mult_2sig, color="C0", linewidth=0.5, alpha=0.25, linestyle=":")
+ax.axhline(1 / time_mult_2sig, color="C0", linewidth=0.5, alpha=0.25, linestyle=":")
+
+# Annotations
+xmax = max(t_minutes) * 1.5
+ax.text(xmax, time_mult_1sig, f"  +1σ = {time_mult_1sig:.1f}x",
+        va="center", fontsize=8, color="C0", alpha=0.7)
+ax.text(xmax, 1 / time_mult_1sig, f"  −1σ = {1/time_mult_1sig:.2f}x",
+        va="center", fontsize=8, color="C0", alpha=0.7)
+ax.text(xmax, time_mult_2sig, f"  +2σ = {time_mult_2sig:.0f}x",
+        va="center", fontsize=8, color="C0", alpha=0.7)
+
+ax.set_xscale("log")
+ax.set_yscale("log")
+
+tick_minutes = [1/60, 0.5, 1, 5, 10, 30, 60, 4*60, 8*60]
+tick_labels = ["1 sec", "30 sec", "1 min", "5 min", "10 min", "30 min", "1 hr", "4 hr", "8 hr"]
+ax.set_xticks(tick_minutes)
+ax.set_xticklabels(tick_labels, fontsize=8)
+ax.set_xlim(min(t_minutes) * 0.5, max(t_minutes) * 2)
+
+yticks = [1/time_mult_2sig, 1/time_mult_1sig, 0.5, 1.0, 2.0, time_mult_1sig, time_mult_2sig]
+ax.set_yticks(yticks)
+ax.set_yticklabels([f"{y:.1f}x" if y >= 0.1 else f"{y:.2f}x" for y in yticks], fontsize=8)
+
+ax.set_xlabel("Human time-to-complete")
+ax.set_ylabel("Difficulty multiplier\n(1x = average for this task length)")
+ax.grid(True, which="major", axis="y", linestyle="--", linewidth=0.5, alpha=0.2)
+
 fig.tight_layout()
 plt.show()
 ```
 
-This is what $\sigma_b \approx 1.44$ looks like in practice. There's not too much curvature, so I think the log-linear form is decent, though there might be some curvature from -2 onward. There is, though, a weird cluster on the left, which I think can be explained by very easy tasks containing virtually no information about difficulty, but I don't think it's worth inspecting these further / removing points. Overall this looks A-OK to me.
+The y-axis is the difficulty multiplier from above. A dot at 5x means the task's equivalent difficulty time is 5x its actual human time. Even within the ±1σ band, tasks of identical human time can differ by a factor of `{python} f"{difficulty_time_mult**2:.0f}"`x in equivalent difficulty, so the practical spread is enormous.
+
+There's not too much curvature in the relationship between log human time and difficulty, so I think the log-linear form is decent, but it's much more spread out than we'd like. There is a cluster of easy outliers on the far left, which I think can be explained by very short tasks containing virtually no information about difficulty. Overall this looks reasonable for modeling purposes.
 
 ## Modeling ability over time
 
-By directly modeling model ability, we can try out shapes like exponential, subexponential, superexponential, saturating, and singularity. Forecasts depend a lot on which shape you pick, and the data doesn't really tell you much, so it's not easy to choose between them. Your priors rule here.
+By directly modeling ability over time, we can try out shapes like exponential, subexponential, superexponential, saturating, and singularity. Forecasts depend a lot on which shape you pick, and the data doesn't really tell you much, so it's not easy to choose between them. Your priors rule here.
 
 The abilities are modeled as
 $$
 \theta_i \sim \mathcal{N}\bigl(f(x_i;\, \gamma),\; \sigma_\theta\bigr)
 $$
 
-where $x_i$ is the model release date in years, centered at the mean (September 2024). I'm still using a random effect for model ability here, since nobody seriously thinks every model released on the same date must be equally capable. I'm looking at four shapes for $f$:[Quadratic is the simplest choice of superexponential function. You could spin a story in its favor, but using it is somewhat arbitrary. The power-law is the simplest function that can be both super- and subexponential (in practice turns out to be superexponential here though), and I included the saturating model because, well, why not?]{.aside}
+where $x_i$ is the model release date in years, centered at the mean (September 2024). I'm still using a random effect for model ability here, since nobody seriously thinks every model released on the same date must be equally capable. I'm looking at four shapes for $f$:^[Quadratic is the simplest choice of superexponential function. You could spin a story in its favor, but using it is somewhat arbitrary. The power-law is the simplest function that can be both super- and subexponential (in practice turns out to be superexponential here though), and I included the saturating model because, well, why not?]
 
 | Model | $f(x)$ | Params | Intuition |
 |:------|:-------|:------:|:----------|
@@ -657,7 +717,7 @@ plt.show()
 
 So, on the one hand, it's the variance ($\sigma_b \approx 1.44$) alone that causes these two plots to be necessary under our model. But on the other hand, the difference is not really a consequence of modeling. Some tasks of the same human time vary a lot in how hard they are for our models, and a phenomenon like this would happen for *any* model that's actually honest about this.
 
-The marginal horizon is the one that matters for practical purposes. "Typical" is optimistic since it only considers tasks of average difficulty for their length. The marginal accounts for the full spread of tasks, so it's what you actually care about when predicting success on a random task of some length. That said, frontier performance of `{python} f"{frontier_80_marg_minutes:.0f}"` minutes does sound sort of short? I'm not sure. I ask Claude to do short coding and stats tasks frequently, and I do get subtly wrong responses. I usually attribute these to imprecise prompting, but I could be wrong.
+The marginal horizon is the one that matters for practical purposes. "Typical" is optimistic since it only considers tasks of average difficulty for their length. The marginal accounts for the full spread of tasks, so it's what you actually care about when predicting success on a random task of some length. That said, frontier performance of `{python} f"{frontier_80_marg_minutes:.0f}"` minutes does sound sort of short to me. I'm used to LLMs roughly one-shotting longer tasks than that, but it usually takes some iterations to get it just right. Getting the context and subtle intentions right on the first try is hard, so I'm willing to believe this estimate is reasonable.
 
 Anyway, the predicted crossing dates at 80% success are:
 
@@ -735,7 +795,7 @@ Markdown(h2)
 
 Make of this what you will, but let's go through one scenario. Let's say I'm a believer in superexponential models with no preference between quadratic and power-law, so I have 50-50 weighting on those. Suppose also I believe that 125 years is the magic number for the auto-coder of [AI Futures](https://www.aifuturesmodel.com/), but I prefer $80\%$ to $50\%$ as the latter is too brittle. Then, using the arguably correct marginal formulation, my timeline has mean roughly `{python} scenario_marg_str`, but the typical framework yields roughly `{python} scenario_typ_str` instead. And this isn't too bad, just a difference of ~`{python} f"{scenario_diff_years:.1f}"` years! The linear model is similar, with timelines pushed out roughly `{python} f"{linear_diff_years:.1f}"` years. So, the wide marginal-typical gap doesn't translate into big timeline gaps, as both trajectories have the same slope, just at a different level.
 
-Let's also have a look at METR's actual numbers. They report an 80% horizon of around `{python} f"{_metr_sonnet37_80_min:.0f}"` minutes for Claude 3.7 Sonnet. Our typical 80% horizon for that model under the linear trend is `{python} f"{sonnet37_typ_min:.0f}"` minutes, and the marginal is `{python} f"{sonnet37_marg_min:.0f}"` minutes---about `{python} f"{_metr_sonnet37_80_min / sonnet37_marg_min:.0f}"`x lower than METR's. Recall that METR's methodology doesn't model task-level difficulty variation at all, so their 80% horizon effectively reflects the typical tasks at each length rather than a random draw.
+Let's also have a look at METR's actual numbers. They report an 80% horizon of around `{python} f"{_metr_sonnet37_80_min:.0f}"` minutes for Claude 3.7 Sonnet (in the original paper). Our typical 80% horizon for that model under the linear trend is about `{python} f"{sonnet37_typ_min:.1f}"` min, and the marginal is about `{python} f"{sonnet37_marg_min:.1f}"` min---roughly `{python} f"{_metr_sonnet37_80_min / sonnet37_marg_min:.0f}"`x shorter than METR's. Recall that METR's methodology doesn't model task-level difficulty variation at all, so their 80% horizon effectively reflects the typical tasks at each length rather than a random draw.
 
 ## Implied doubling time
 
