@@ -417,8 +417,8 @@ ax.errorbar(
 LABELS_TO_SHOW = {
     "o1_inspect": ("o1", (8, -8)),
     "claude_3_5_sonnet_20241022_inspect": ("Sonnet 3.5 (new)", (8, -8)),
-    "claude_opus_4_5_inspect": ("Opus 4.5", (8, 0)),
-    "gpt_5_2": ("GPT-5.2", (8, -8)),
+    "claude_opus_4_5_inspect": ("Opus 4.5", (8, -10)),
+    "gpt_5_2": ("GPT-5.2", (8, 8)),
 }
 for _, r in hpts.iterrows():
     if r["model"] in LABELS_TO_SHOW:
@@ -441,7 +441,7 @@ ax.axhline(
 ax.set_yscale("log")
 ax.set_xlabel("Release date")
 ax.set_title("50%-success horizon vs. release date")
-ax.set_xlim(pd.Timestamp("2024-04-01"), x_max)
+ax.set_xlim(pd.Timestamp("2023-01-01"), x_max)
 ax.set_ylim(0.03, 365 * 24)  # ~2 min to 1 year
 ax.xaxis.set_major_locator(mdates.YearLocator())
 ax.xaxis.set_major_formatter(mdates.DateFormatter("%Y"))
