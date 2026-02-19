@@ -1,7 +1,7 @@
 ---
-title: "Forecasts from METR time horizons are prior-driven: A Bayesian analysis"
+title: "(Updated) METR's data can't distinguish between trajectories (and 80% horizons are an order of magnitude off)"
 author: "Jonas Moss"
-date: "2026-02-13"
+date: "2026-02-19"
 format:
   html:
     toc: true
@@ -10,9 +10,6 @@ format:
     code-tools: true
     theme: cosmo
     embed-resources: true
-  pdf:
-    toc: true
-    toc-depth: 3
   gfm:
     variant: +footnotes+tex_math_dollars
 execute:
@@ -43,6 +40,14 @@ from datetime import datetime
 RUNS_ROOT = Path("outputs/runs")
 
 SPECS = {
+    "Linear": "time_irt__theta_linear__v11",
+    "Quadratic": "time_irt__theta_quadratic_pos__v11",
+    "Power-law": "time_irt__theta_xpow__v11",
+    "Saturating": "time_irt__theta_theta_logistic__v11",
+}
+
+# All-models specs (used in appendix).
+SPECS_ALL = {
     "Linear": "time_irt__theta_linear",
     "Quadratic": "time_irt__theta_quadratic_pos",
     "Power-law": "time_irt__theta_xpow",
@@ -70,6 +75,77 @@ def figdir(spec: str) -> Path:
 
 def diagdir(spec: str) -> Path:
     return resolve_latest(spec) / "diagnostics"
+
+
+# ---------------------------------------------------------------------------
+# LOO & calibration (read from diagnostics CSVs)
+# ---------------------------------------------------------------------------
+_loo = {}
+_brier = {}
+for label, spec in SPECS.items():
+    loo_path = diagdir(spec) / "loo.csv"
+    if loo_path.exists():
+        row = pd.read_csv(loo_path).iloc[0]
+        _loo[label] = (float(row["elpd_loo"]), float(row["se"]))
+    cal_path = diagdir(spec) / "calibration_metrics.csv"
+    if cal_path.exists():
+        row = pd.read_csv(cal_path).iloc[0]
+        _brier[label] = float(row["brier_weighted"])
+
+
+def _loo_footnote() -> str:
+    """Build the ELPD-LOO footnote from CSVs, sorted best-to-worst."""
+    items = sorted(_loo.items(), key=lambda kv: -kv[1][0])  # highest ELPD first
+    parts = [
+        f"{label.lower()} ${elpd:.1f}$ (SE ${se:.1f}$)" for label, (elpd, se) in items
+    ]
+    return "The ELPD-LOO estimates are: " + ", ".join(parts) + "."
+
+
+def _elpd_spread() -> float:
+    vals = [v[0] for v in _loo.values()]
+    return max(vals) - min(vals) if vals else float("nan")
+
+
+def _brier_summary() -> str:
+    vals = list(_brier.values())
+    if not vals:
+        return "N/A"
+    return f"{np.mean(vals):.3f}"
+
+
+# LOO & calibration for SPECS_ALL (appendix)
+_loo_all = {}
+_brier_all = {}
+for label, spec in SPECS_ALL.items():
+    loo_path = diagdir(spec) / "loo.csv"
+    if loo_path.exists():
+        row = pd.read_csv(loo_path).iloc[0]
+        _loo_all[label] = (float(row["elpd_loo"]), float(row["se"]))
+    cal_path = diagdir(spec) / "calibration_metrics.csv"
+    if cal_path.exists():
+        row = pd.read_csv(cal_path).iloc[0]
+        _brier_all[label] = float(row["brier_weighted"])
+
+
+def _loo_footnote_all() -> str:
+    items = sorted(_loo_all.items(), key=lambda kv: -kv[1][0])
+    parts = [
+        f"{label.lower()} ${elpd:.1f}$ (SE ${se:.1f}$)" for label, (elpd, se) in items
+    ]
+    return "The ELPD-LOO estimates are: " + ", ".join(parts) + "."
+
+
+def _elpd_spread_all() -> float:
+    vals = [v[0] for v in _loo_all.values()]
+    return max(vals) - min(vals) if vals else float("nan")
+
+
+def _brier_summary_all() -> str:
+    vals = list(_brier_all.values())
+    if not vals:
+        return "N/A"
+    return f"{np.mean(vals):.3f}"
 
 
 # ---------------------------------------------------------------------------
@@ -206,13 +282,13 @@ from scipy.stats import gaussian_kde
 
 # Doubling-time draws (months)
 _dt_draws = pd.read_csv(
-    figdir("time_irt__theta_linear") / "doubling_time_draws.csv"
+    figdir("time_irt__theta_linear__v11") / "doubling_time_draws.csv"
 )
 dt_months = _dt_draws["doubling_time_years"].values * 12
 dt_q025, dt_q50, dt_q975 = np.percentile(dt_months, [2.5, 50, 97.5])
 
 # Key IRT parameters from linear model
-_meta_lin = load_meta("time_irt__theta_linear")
+_meta_lin = load_meta("time_irt__theta_linear__v11")
 _sp = _meta_lin["scalar_params"]
 sigma_b_q50 = _sp["sigma_b"]["q50"]
 kappa_q50 = _sp["kappa"]["q50"]
@@ -220,7 +296,7 @@ mean_log_t_hours = _meta_lin["mean_log_t_hours"]
 difficulty_time_mult = np.exp(sigma_b_q50 / kappa_q50)
 
 # 125-year crossing dates for TLDR
-_df125_pre = pd.read_csv("blog/_generated/125y_horizon.csv")
+_df125_pre = pd.read_csv("blog/_generated/125y_horizon_v11.csv")
 
 def _crossing_cri(df, trend):
     r = df[df["theta_trend"] == trend].iloc[0]
@@ -236,22 +312,22 @@ cross125_lin_lo, cross125_lin_hi = _crossing_cri(_df125_pre, "linear")
 cross125_quad_lo, cross125_quad_hi = _crossing_cri(_df125_pre, "quadratic_pos")
 
 # Frontier model's marginal 80% horizon
-_hpts_marg80 = load_horizon_points("time_irt__theta_linear", kind="marginal")
+_hpts_marg80 = load_horizon_points("time_irt__theta_linear__v11", kind="marginal")
 _hpts_marg80 = _hpts_marg80.query("p == 0.8").sort_values("release_date")
 frontier_80_marg_minutes = _hpts_marg80.iloc[-1]["t_hours_q50"] * 60
 
 # Claude 3.7 Sonnet 80% horizons (for comparison with METR's reported ~15 min)
 _metr_sonnet37_80_min = 15.0
 _sonnet37_marg = _hpts_marg80[_hpts_marg80["model"].str.contains("3_7_sonnet")]
-_hpts_typ80 = load_horizon_points("time_irt__theta_linear", kind="typical")
+_hpts_typ80 = load_horizon_points("time_irt__theta_linear__v11", kind="typical")
 _hpts_typ80 = _hpts_typ80.query("p == 0.8")
 _sonnet37_typ = _hpts_typ80[_hpts_typ80["model"].str.contains("3_7_sonnet")]
 sonnet37_marg_min = _sonnet37_marg.iloc[0]["t_hours_q50"] * 60
 sonnet37_typ_min = _sonnet37_typ.iloc[0]["t_hours_q50"] * 60
 
 # Scenario: 125-year 80% crossing, marginal vs typical
-_df_marg_125_sc = pd.read_csv("blog/_generated/125y_horizon_p80_marginal.csv")
-_df_typ_125_sc = pd.read_csv("blog/_generated/125y_horizon_p80_typical.csv")
+_df_marg_125_sc = pd.read_csv("blog/_generated/125y_horizon_p80_marginal_v11.csv")
+_df_typ_125_sc = pd.read_csv("blog/_generated/125y_horizon_p80_typical_v11.csv")
 
 def _mean_crossing_date(df, trend):
     return pd.to_datetime(df[df["theta_trend"] == trend].iloc[0]["mean_date"])
@@ -278,17 +354,19 @@ _typ_lin_125 = _mean_crossing_date(_df_typ_125_sc, "linear")
 linear_diff_years = abs((_marg_lin_125 - _typ_lin_125).days) / 365.25
 ```
 
+*Update:* Added GPT-5.2 to the main part of the text, this uses all data from v1.1. Added appendix using all METR models, by joining v1.0 and v1.1. Added appendix with marginal vs typical P(success) curves. Thanks to Thomas Kwa for telling me about this.
+
 ## TLDR
 I reanalyzed the METR task data using a Bayesian item response theory model. 
 
 * **The METR data cannot distinguish exponential from superexponential growth.** Four trajectory shapes (linear, quadratic, power-law, saturating) fit the existing data equally well but diverge on forecasts. For instance, the 95% credible interval for the 125-year crossing is `{python} cross125_lin_lo` – `{python} cross125_lin_hi` for linear and `{python} cross125_quad_lo` – `{python} cross125_quad_hi` for quadratic.
-* **METR's headline horizon numbers overstate current capability by roughly an order of magnitude at 80% success.** METR doesn't model variation in task difficulty, so their horizons reflect a task of typical difficulty for its length. But tasks of the same length vary a lot in how hard they are, and at 80% success the hard ones dominate. Curiously, this doesn't affect timelines by more than ~1 year, as it's just a level-shift.
-* **We need data about the human times to quantify uncertainty.** Credible intervals throughout are too narrow because I treat human times as known rather than estimating them as latent variables. I'm doing this because I don't have access to all the raw data. This could be a big deal, and could also affect the $80\%$ horizons.
+* **METR's headline horizon numbers overstate current capability by roughly an order of magnitude at 80% success.** METR doesn't model variation in task difficulty, so their horizons reflect a task of typical difficulty for its length. But tasks of the same length vary a lot in how hard they are, and difficult tasks pull the horizon down more than the easy tasks push it up. Curiously, this doesn't affect timelines by more than ~1 year, as it's just a level-shift.
+* **We need data about the human times to quantify uncertainty.** Credible intervals throughout are too narrow because I treat human times as known rather than estimating using latent variables. I'm doing this because I don't have access to all the raw data. This could be a big deal, and could also affect the $80\%$ horizons.
 * Doubling time under the standard linear (exponential growth) model is ~`{python} f"{dt_q50:.1f}"` months, which is similar to METR's estimate (95% credible interval: `{python} f"{dt_q025:.1f}"`–`{python} f"{dt_q975:.1f}"`, but see caveat above).
 
 ## METR data
 
-Let's start with a plot that shouldn't be too surprising. Four reasonable models fit the [METR data](https://github.com/METR/eval-analysis-public/tree/main/reports/time-horizon-1-1/data/raw) equally well. They agree about the past but disagree strongly about the future.
+Let's start with a plot that shouldn't be too surprising. Four reasonable models fit the [METR data (v 1.1)](https://github.com/METR/eval-analysis-public/tree/main/reports/time-horizon-1-1/data/raw) equally well. They agree about the past but disagree strongly about the future.
 
 
 ```{python}
@@ -337,9 +415,10 @@ ax.errorbar(
 
 # Label a few key models.
 LABELS_TO_SHOW = {
-    "gpt_4o_inspect": ("GPT-4o", (8, -8)),
+    "o1_inspect": ("o1", (8, -8)),
     "claude_3_5_sonnet_20241022_inspect": ("Sonnet 3.5 (new)", (8, -8)),
     "claude_opus_4_5_inspect": ("Opus 4.5", (8, 0)),
+    "gpt_5_2": ("GPT-5.2", (8, -8)),
 }
 for _, r in hpts.iterrows():
     if r["model"] in LABELS_TO_SHOW:
@@ -362,7 +441,7 @@ ax.axhline(
 ax.set_yscale("log")
 ax.set_xlabel("Release date")
 ax.set_title("50%-success horizon vs. release date")
-ax.set_xlim(pd.Timestamp("2023-01-01"), x_max)
+ax.set_xlim(pd.Timestamp("2024-04-01"), x_max)
 ax.set_ylim(0.03, 365 * 24)  # ~2 min to 1 year
 ax.xaxis.set_major_locator(mdates.YearLocator())
 ax.xaxis.set_major_formatter(mdates.DateFormatter("%Y"))
@@ -387,7 +466,7 @@ fig.tight_layout()
 plt.show()
 ```
 
-The model selection scores known as ELPD-LOO differ by at most ~7 points.^[The ELPD-LOO estimates are: linear $-2191.9$ (SE $70.1$), saturating $-2195.9$ (SE $70.2$), power-law $-2197.0$ (SE $70.1$), quadratic $-2198.7$ (SE $70.0$).] Calibration is nearly identical, with Brier $\approx$ 0.066 across the board. Your prior matters a lot here and has clear-cut consequences, as the models agree about the past but disagree strongly about the future. The current data on METR's Github doesn't include GPT-5.2 at the moment, if your'e missing it.
+The model selection scores known as ELPD-LOO differ by at most ~`{python} f"{_elpd_spread():.0f}"` points.^[`{python} _loo_footnote()`] Calibration is nearly identical, with Brier $\approx$ `{python} _brier_summary()` across the board. Your prior matters a lot here and has clear-cut consequences, as the models agree about the past but disagree strongly about the future. The latest data point is GPT-5.2 (December 2025).
 
 These curves are fitted using a Bayesian item response theory model described below. Before describing it, let's recall METR's analysis of the time horizon. They proceed in two stages:
 
@@ -395,7 +474,7 @@ These curves are fitted using a Bayesian item response theory model described be
 
 2. *An OLS trend.* Regress $\log h_i$ on release date. The slope gives a doubling time of ~4 months.
 
-This is good modeling and gets the main story right, but there are some non-standard choices. For instance, the slope $\beta_i$ is per-model rather than per-task (which is unusual in item response theory) and Stage 1 uncertainty doesn't propagate into Stage 2 (METR uses the bootstrap). It also treats every task of the same length as equally difficult and only considers one trajectory shape.
+This is good modeling and gets the main story right, but there are some non-standard choices here. For instance, the slope $\beta_i$ varies with model rather than task (which is unusual in item response theory) and Stage 1 uncertainty is not accounted for in Stage 2 (METR uses the bootstrap). It also treats every task of the same length as equally difficult and only considers one trajectory shape.
 
 In this post I make a joint model, adjust some things to be more in line with standard practice, and ask what happens when you try different trajectory shapes. The post is somewhat technical, but not so god-awful that Claude won't be able to answer any question you have about the methodology. Models are fitted with Stan, 4 chains $\times$ 1000 post-warmup draws, with code available [here](https://github.com/JonasMoss/metr-stats). I intentionally won't go into details about technicalities, e.g. prior choices -- the code contains everything you'll want to know and your favorite LLM will figure it out for you. (All priors were chosen by Codex / Claude Code and appear reasonable enough.)
 
@@ -417,17 +496,17 @@ This matters here because METR tasks are like exam questions. They vary in both 
 
 ## Modeling difficulty
 
-Ability and difficulty parameters $\theta_i, b_j$ in the 2PL are hard to interpret. The scale is arbitrary, and it's not clear what, for instance, a 0.1 increase in ability actually means. Or whether it would be better to take a log-transform of the parameter, etc. The METR data is cool and and famous because each task comes with a human time, which gives us a natural and interpretable scale for difficulty. So let's connect human time to difficulty first.
+Ability and difficulty parameters $\theta_i, b_j$ in the 2PL are hard to interpret. The scale is arbitrary, and it's not clear what, for instance, a 0.1 increase in ability actually means. Or whether it would be better to take a log-transform of the parameter, etc. The METR data is cool and famous because each task comes with a human time, which gives us a natural and interpretable scale for difficulty. So let's connect human time to difficulty first.
 
 $$
-b_j \sim \mathcal{N}(\alpha + \kappa \cdot \log t_j, \;\sigma_b)
+b_j \sim \mathcal{N}(\alpha + \kappa \log t_j, \;\sigma_b)
 $$
 
 Each task's difficulty has a mean that depends on log human time, plus a random component to account for the fact that same-length tasks are not born equal. (METR treats all tasks of identical length as equally hard.)
 
-Since difficulty increases with log human time at rate $\kappa$, we can convert any difficulty value back into a time. Call it the *equivalent difficulty time*. If a task takes humans 10 minutes but is unusually hard for AI, its equivalent difficulty time might be 50 minutes, meaning it's as hard as a typical 50-minute task. Formally, a task with human time $t$ and difficulty residual $u$ has equivalent difficulty time $t \cdot \exp(u / \kappa)$.
+Since difficulty increases with log human time at rate $\kappa$, we can convert any difficulty value back into a time, an *equivalent difficulty time*. If a task takes humans 10 minutes but is unusually hard for AI, its equivalent difficulty time might be 50 minutes. A task with human time $t$ and difficulty residual $u$ has equivalent difficulty time $t \cdot \exp(u / \kappa)$.^[Define $t^*$ as the human time whose mean difficulty equals $b_j$. Then $\alpha + \kappa \log t^* = \alpha + \kappa \log t_j + u_j$, so $\log t^* = \log t_j + u_j / \kappa$ and $t^* = t_j \exp(u_j / \kappa)$.]
 
-I estimate $\sigma_b \approx$ `{python} f"{sigma_b_q50:.2f}"` (posterior median), which is quite large once we interpret it. One standard deviation of unexplained difficulty corresponds to a ~`{python} f"{difficulty_time_mult:.1f}"`x multiplier in equivalent difficulty time.^[The multiplier is $\exp(\sigma_b / \kappa)$ where $\kappa \approx 0.93$ is the posterior median] A task that's $1\sigma$ harder than average for its length is as hard as a typical task `{python} f"{difficulty_time_mult:.1f}"`x longer. A task that's $2\sigma$ harder is as hard as a typical task roughly `{python} f"{np.exp(2 * sigma_b_q50 / kappa_q50):.0f}"`x longer, so tasks of identical human time can span a huge range in actual difficulty for AI.
+I estimate $\sigma_b \approx$ `{python} f"{sigma_b_q50:.2f}"` (posterior median), which is quite large once we interpret it. One standard deviation of unexplained difficulty corresponds to a ~`{python} f"{difficulty_time_mult:.1f}"`x multiplier in equivalent difficulty time.^[The multiplier is $\exp(\sigma_b / \kappa)$ where $\kappa \approx 0.93$ is the posterior median] A task that's $1\sigma$ harder than the average for its length is as hard as a task `{python} f"{difficulty_time_mult:.1f}"`x longer. And a task that's $2\sigma$ harder is as hard as a task roughly `{python} f"{np.exp(2 * sigma_b_q50 / kappa_q50):.0f}"`x longer. So tasks of identical human time can span a huge range in difficulty for the AI models.
 
 Of course, this is a modeling choice that can be wrong. There's no guarantee that difficulty is linear in $\log t_j$, so we need diagnostics to check. The plot below does double duty as model diagnostic and explanation of what the random effect means in practice.
 
@@ -436,7 +515,7 @@ Of course, this is a modeling choice that can be wrong. There's no guarantee tha
 # | fig-cap: "Each dot is a task. The y-axis shows how much harder or easier the task is than a typical task of the same human time, expressed as a multiplier in equivalent task time. Shaded bands show ±1σ and ±2σ."
 # | echo: false
 
-resid = pd.read_csv(diagdir("time_irt__theta_linear") / "difficulty_residuals.csv")
+resid = pd.read_csv(diagdir("time_irt__theta_linear__v11") / "difficulty_residuals.csv")
 
 # Transform to interpretable axes
 t_hours = np.exp(resid["x"].values + mean_log_t_hours)
@@ -491,7 +570,7 @@ fig.tight_layout()
 plt.show()
 ```
 
-The y-axis is the difficulty multiplier from above. A dot at 5x means the task's equivalent difficulty time is 5x its actual human time. Even within the ±1σ band, tasks of identical human time can differ multiplicatively by a factor of `{python} f"{difficulty_time_mult**2:.0f}"`x in equivalent difficulty, so the practical spread is enormous.
+A plotted dot at 5x means the task's equivalent difficulty time is 5x its actual human time. Even within the $\pm 1\sigma$ band, tasks of identical human time can differ multiplicatively by a factor of `{python} f"{difficulty_time_mult**2:.0f}"`x in equivalent difficulty time, so the practical spread is enormous.
 
 There's not too much curvature in the relationship between log human time and difficulty, so I think the log-linear form is decent, but it's much more spread out than we'd like. There is a cluster of easy outliers on the far left, which I think can be explained by very short tasks containing virtually no information about difficulty. Overall this looks reasonable for modeling purposes.
 
@@ -513,12 +592,12 @@ where $x_i$ is the model release date in years, centered at the mean (September 
 | Power-law | $\gamma_0 + \gamma_1 \tilde{x}^{\alpha}$, $\alpha \in [0.1, 2]$ | 3 | Flexible: sub- or super-exponential. $\tilde{x}$ is a shifted/scaled version of $x$. |
 | Saturating | $\theta_{\min} + \Delta\theta \cdot \text{logit}^{-1}(a + bx)$ | 4 | S-curve ceiling on ability. |
 
-If METR's GitHub repo contained all the historical data, I would also have tried a piecewise linear with a breakpoint around the time of o1, which visually fits the original METR graphs better than a plain linear fit. But since the available data doesn't go that far back, I don't need to, and the value of including those early points in a forecasting exercise is questionable anyway. Getting hold of the latest data points is more important.
+If METR's GitHub repo contained all the historical data, I would also have tried a piecewise linear with a breakpoint around the time of o1, which visually fits the original METR graphs better than a plain linear fit. But since the available data doesn't go that far back, I don't need to, and the value of including those early points in a forecasting exercise is questionable anyway. Getting hold of the latest data points is more important. (*Added:* I use all the data in the appendix below, but I do not attempt a piecewise linear since running the STAN programs take a lot of time.)
 
 All models share the same 2PL likelihood and task parameters ($b_j$, $a_j$,
 $\alpha$, $\kappa$, $\sigma_b$). Only the model for $\theta$ changes.
 
-Each model except the saturating model will cross any threshold given enough time. Here are posteriors for the 50% crossing across our models. The saturating model almost never crosses the 1-month and 125-year thresholds since it saturates too fast. 
+Each model except the saturating model will cross any threshold given enough time. Here are posteriors for the 50% crossing across our models. The saturating model almost never crosses the 1-month and 125-year thresholds since it saturates too fast.
 
 ```{python}
 # | echo: false
@@ -555,8 +634,8 @@ def _fmt_row(r):
     return _to_ym(r["mean_date"]), cri
 
 
-df1m = pd.read_csv("blog/_generated/one_month_horizon.csv")
-df125 = pd.read_csv("blog/_generated/125y_horizon.csv")
+df1m = pd.read_csv("blog/_generated/one_month_horizon_v11.csv")
+df125 = pd.read_csv("blog/_generated/125y_horizon_v11.csv")
 
 rows = []
 for _, r1 in df1m.iterrows():
@@ -572,16 +651,11 @@ for _, r1 in df1m.iterrows():
         d2, c2 = "---", "---"
     rows.append((label, d1, c1, d2, c2))
 
-html50 = '<table style="width:100%">\n<thead>\n'
-html50 += '<tr><th rowspan="2">Trend</th>'
-html50 += '<th colspan="2" style="text-align:center;border-bottom:none">1 month</th>'
-html50 += '<th colspan="2" style="text-align:center;border-bottom:none">125 years</th></tr>\n'
-html50 += '<tr><th>Mean</th><th>95% CrI</th><th>Mean</th><th>95% CrI</th></tr>\n'
-html50 += '</thead>\n<tbody>\n'
+md = "| Trend | 1mo Mean | 1mo 95% CrI | 125y Mean | 125y 95% CrI |\n"
+md += "|:------|:---------|:------------|:----------|:------------|\n"
 for label, d1, c1, d2, c2 in rows:
-    html50 += f'<tr><td>{label}</td><td>{d1}</td><td>{c1}</td><td>{d2}</td><td>{c2}</td></tr>\n'
-html50 += '</tbody>\n</table>'
-Markdown(html50)
+    md += f"| {label} | {d1} | {c1} | {d2} | {c2} |\n"
+Markdown(md)
 ```
 
 
@@ -695,7 +769,7 @@ for ax, (panel_label, spec_name) in zip(axes, panel_specs):
 
     ax.set_yscale("log")
     ax.set_title(panel_label, fontsize=12)
-    ax.set_xlim(pd.Timestamp("2023-01-01"), x_max)
+    ax.set_xlim(pd.Timestamp("2024-04-01"), x_max)
     ax.set_ylim(1e-3, 365 * 24)
     ax.xaxis.set_major_locator(mdates.YearLocator())
     ax.xaxis.set_major_formatter(mdates.DateFormatter("%Y"))
@@ -719,15 +793,15 @@ So, on the one hand, it's the variance ($\sigma_b \approx 1.44$) alone that caus
 
 The marginal horizon is the one that matters for practical purposes. "Typical" is optimistic since it only considers tasks of average difficulty for their length. The marginal accounts for the full spread of tasks, so it's what you actually care about when predicting success on a random task of some length. That said, from the plot we see frontier performance of roughly `{python} f"{frontier_80_marg_minutes:.0f}"` minutes, which does sound sort of short to me. I'm used to LLMs roughly one-shotting longer tasks than that, but it usually takes some iterations to get it just right. Getting the context and subtle intentions right on the first try is hard, so I'm willing to believe this estimate is reasonable.
 
-Anyway, the predicted crossing dates at 80% success are:
+Anyway, the predicted crossing dates at 80% success are below. First, the 1-month threshold (saturating model omitted since it almost never crosses):
 
 ```{python}
 # | echo: false
 # | label: tbl-horizon-80-1mo
 # | tbl-cap: "Predicted date when the 80%-success horizon reaches 1 month. The saturating model is omitted (almost never crosses)."
 
-df_typ_1m = pd.read_csv("blog/_generated/one_month_horizon_p80_typical.csv")
-df_marg_1m = pd.read_csv("blog/_generated/one_month_horizon_p80_marginal.csv")
+df_typ_1m = pd.read_csv("blog/_generated/one_month_horizon_p80_typical_v11.csv")
+df_marg_1m = pd.read_csv("blog/_generated/one_month_horizon_p80_marginal_v11.csv")
 
 _labels80 = {
     "linear": "Linear",
@@ -753,25 +827,22 @@ for trend, label in _labels80.items():
     md, mc = _get80(df_marg_1m, trend)
     rows_1m.append((label, td, tc, md, mc))
 
-h = '<table style="width:100%">\n<thead>\n'
-h += '<tr><th rowspan="2">Trend</th>'
-h += '<th colspan="2" style="text-align:center;border-bottom:none">Typical</th>'
-h += '<th colspan="2" style="text-align:center;border-bottom:none">Marginal</th></tr>\n'
-h += '<tr><th>Mean</th><th>95% CrI</th><th>Mean</th><th>95% CrI</th></tr>\n'
-h += '</thead>\n<tbody>\n'
-for label, td, tc, md, mc in rows_1m:
-    h += f'<tr><td>{label}</td><td>{td}</td><td>{tc}</td><td>{md}</td><td>{mc}</td></tr>\n'
-h += '</tbody>\n</table>'
-Markdown(h)
+md = "| Trend | Typical Mean | Typical 95% CrI | Marginal Mean | Marginal 95% CrI |\n"
+md += "|:------|:-------------|:----------------|:--------------|:-----------------|\n"
+for label, td, tc, md_val, mc in rows_1m:
+    md += f"| {label} | {td} | {tc} | {md_val} | {mc} |\n"
+Markdown(md)
 ```
+
+And the 125-year threshold:
 
 ```{python}
 # | echo: false
 # | label: tbl-horizon-80-125y
 # | tbl-cap: "Predicted date when the 80%-success horizon reaches 125 years. The saturating model is omitted (never crosses)."
 
-df_typ_125 = pd.read_csv("blog/_generated/125y_horizon_p80_typical.csv")
-df_marg_125 = pd.read_csv("blog/_generated/125y_horizon_p80_marginal.csv")
+df_typ_125 = pd.read_csv("blog/_generated/125y_horizon_p80_typical_v11.csv")
+df_marg_125 = pd.read_csv("blog/_generated/125y_horizon_p80_marginal_v11.csv")
 
 rows_125 = []
 for trend, label in _labels80.items():
@@ -779,23 +850,16 @@ for trend, label in _labels80.items():
     md, mc = _get80(df_marg_125, trend)
     rows_125.append((label, td, tc, md, mc))
 
-h2 = '<table style="width:100%">\n<thead>\n'
-h2 += '<tr><th rowspan="2">Trend</th>'
-h2 += '<th colspan="2" style="text-align:center;border-bottom:none">Typical</th>'
-h2 += (
-    '<th colspan="2" style="text-align:center;border-bottom:none">Marginal</th></tr>\n'
-)
-h2 += "<tr><th>Mean</th><th>95% CrI</th><th>Mean</th><th>95% CrI</th></tr>\n"
-h2 += "</thead>\n<tbody>\n"
-for label, td, tc, md, mc in rows_125:
-    h2 += f"<tr><td>{label}</td><td>{td}</td><td>{tc}</td><td>{md}</td><td>{mc}</td></tr>\n"
-h2 += "</tbody>\n</table>"
-Markdown(h2)
+md = "| Trend | Typical Mean | Typical 95% CrI | Marginal Mean | Marginal 95% CrI |\n"
+md += "|:------|:-------------|:----------------|:--------------|:-----------------|\n"
+for label, td, tc, md_val, mc in rows_125:
+    md += f"| {label} | {td} | {tc} | {md_val} | {mc} |\n"
+Markdown(md)
 ```
 
-Make of this what you will, but let's go through one scenario. Let's say I'm a believer in superexponential models with no preference between quadratic and power-law, so I have 50-50 weighting on those. Suppose also I believe that 125 years is the magic number for the auto-coder of [AI Futures](https://www.aifuturesmodel.com/), but I prefer $80\%$ to $50\%$ as the latter is too brittle. Then, using the arguably correct marginal formulation, my timeline has mean roughly `{python} scenario_marg_str`, but the typical framework yields roughly `{python} scenario_typ_str` instead. And this isn't too bad, just a difference of ~`{python} f"{scenario_diff_years:.1f}"` years! The linear model is similar, with timelines pushed out roughly `{python} f"{linear_diff_years:.1f}"` years. So, the wide marginal-typical gap doesn't translate into *that* big timeline gaps, as both trajectories have the same "slope", just at a different level.
+Make of this what you will, but let's go through one scenario. Let's say I'm a believer in superexponential models with no preference between quadratic and power-law, so I have 50-50 weighting on those. Suppose also I believe that 125 years is the magic number for the auto-coder of [AI Futures](https://www.aifuturesmodel.com/), but I prefer $80\%$ to $50\%$ as the latter is too brittle. Then, using the arguably correct marginal formulation, my timeline has mean roughly `{python} scenario_marg_str`, but the typical framework yields roughly `{python} scenario_typ_str` instead. And this isn't too bad, just a difference of ~`{python} f"{scenario_diff_years:.1f}"` years! The linear model is similar, with timelines pushed out roughly `{python} f"{linear_diff_years:.1f}"` years. So, the wide marginal-typical gap doesn't translate into *that* big of a timeline gap, as both trajectories have the same "slope", just at a different level.
 
-Let's also have a look at METR's actual numbers. They report an 80% horizon of around `{python} f"{_metr_sonnet37_80_min:.0f}"` minutes for Claude 3.7 Sonnet (in the original paper). Our typical 80% horizon for that model under the linear trend is about `{python} f"{sonnet37_typ_min:.1f}"` min, and the marginal is about `{python} f"{sonnet37_marg_min:.1f}"` min---roughly `{python} f"{_metr_sonnet37_80_min / sonnet37_marg_min:.0f}"`x shorter than METR's. Recall that METR's methodology doesn't model task-level difficulty variation at all, so their 80% horizon effectively reflects the typical tasks at each length rather than a random draw.
+Let's also have a look at METR's actual numbers. They report an 80% horizon of around `{python} f"{_metr_sonnet37_80_min:.0f}"` minutes for Claude 3.7 Sonnet (in the original paper). Our typical 80% horizon for that model under the linear model is about `{python} f"{sonnet37_typ_min:.1f}"` min, and the marginal is about `{python} f"{sonnet37_marg_min:.1f}"` min, roughly 15x shorter than METR's.
 
 ## Modeling $t_j$
 
@@ -820,7 +884,7 @@ A technical point: When modeling $t_j$, I would also try a Weibull distribution 
 
 from scipy.stats import gaussian_kde
 
-draws = pd.read_csv(figdir("time_irt__theta_linear") / "doubling_time_draws.csv")
+draws = pd.read_csv(figdir("time_irt__theta_linear__v11") / "doubling_time_draws.csv")
 dt_months = draws["doubling_time_years"].values * 12
 
 kde = gaussian_kde(dt_months, bw_method="silverman")
@@ -848,4 +912,431 @@ fig.tight_layout()
 plt.show()
 ```
 
+## Appendix: Results for all models
 
+Recall that the main text uses only METR v1.1 data. In this appendix I use all available data (v1.0 + v1.1 merged). The overall story is similar, but the pre-Sonnet-3.5 models introduce a visible kink in the trajectory that a single smooth trend struggles with. (This is well-known.)
+
+The ELPD-LOO scores differ by at most ~`{python} f"{_elpd_spread_all():.0f}"` points, with Brier $\approx$ `{python} _brier_summary_all()`.^[`{python} _loo_footnote_all()`]
+
+```{python}
+# | label: fig-horizon-fan-all
+# | fig-cap: "50%-success horizon vs. release date (all models)."
+# | echo: false
+
+fig, ax = plt.subplots(figsize=(9.5, 3.8))
+
+x_max = pd.Timestamp("2029-01-01")
+
+for label, spec_name in SPECS_ALL.items():
+    g = load_horizon_grid(spec_name).query("p == 0.5").sort_values("date")
+    g = g[g["date"] <= x_max]
+    ax.plot(
+        g["date"], g["t_hours_q50"], color=SPEC_COLORS[label], linewidth=2, label=label
+    )
+    ax.fill_between(
+        g["date"],
+        g["t_hours_q025"],
+        g["t_hours_q975"],
+        color=SPEC_COLORS[label],
+        alpha=0.10,
+    )
+
+hpts = load_horizon_points(list(SPECS_ALL.values())[0]).query("p == 0.5")
+ax.errorbar(
+    hpts["release_date"],
+    hpts["t_hours_q50"],
+    yerr=np.vstack(
+        [
+            hpts["t_hours_q50"] - hpts["t_hours_q025"],
+            hpts["t_hours_q975"] - hpts["t_hours_q50"],
+        ]
+    ),
+    fmt="o",
+    color="black",
+    ecolor="0.35",
+    elinewidth=1.5,
+    capsize=3,
+    alpha=0.7,
+    zorder=5,
+    markersize=5,
+)
+
+LABELS_ALL = {
+    "gpt_3_5_turbo_instruct": ("GPT-3.5", (8, -8)),
+    "claude_3_5_sonnet_20241022_inspect": ("Sonnet 3.5 (new)", (8, -8)),
+    "claude_opus_4_5_inspect": ("Opus 4.5", (8, 0)),
+    "gpt_5_2": ("GPT-5.2", (8, -8)),
+}
+for _, r in hpts.iterrows():
+    if r["model"] in LABELS_ALL:
+        txt, ofs = LABELS_ALL[r["model"]]
+        ax.annotate(
+            txt,
+            (r["release_date"], r["t_hours_q50"]),
+            textcoords="offset points",
+            xytext=ofs,
+            fontsize=7.5,
+            color="0.3",
+            va="center",
+        )
+
+ax.axhline(
+    30 * 24, color="red", linestyle="--", alpha=0.5, linewidth=1.5, label="1 month"
+)
+
+ax.set_yscale("log")
+ax.set_xlabel("Release date")
+ax.set_title("50%-success horizon vs. release date (all models)")
+ax.set_xlim(pd.Timestamp("2023-01-01"), x_max)
+ax.set_ylim(0.03, 365 * 24)
+ax.xaxis.set_major_locator(mdates.YearLocator())
+ax.xaxis.set_major_formatter(mdates.DateFormatter("%Y"))
+
+tick_hours = np.array(
+    [
+        6 / 60,
+        1.0,
+        10.0,
+        4 * 24.0,
+        30 * 24.0,
+        6 * 30 * 24.0,
+    ]
+)
+ax.set_yticks(tick_hours)
+ax.set_yticklabels([_format_duration_hours(float(t)) for t in tick_hours])
+ax.grid(True, which="major", axis="y", linestyle="--", linewidth=0.8, alpha=0.25)
+
+ax.legend(fontsize=8, loc="upper left")
+fig.tight_layout()
+plt.show()
+```
+
+```{python}
+# | label: fig-marginal-typical-all
+# | fig-cap: "Horizon forecasts at 80% success probability, all models. Left: linear trajectory. Right: quadratic (constrained)."
+# | echo: false
+
+panel_specs = [
+    ("Linear", "time_irt__theta_linear"),
+    ("Quadratic", "time_irt__theta_quadratic_pos"),
+]
+x_max = pd.Timestamp("2029-01-01")
+
+fig, axes = plt.subplots(1, 2, figsize=(9.5, 4.0), sharey=True)
+
+for ax, (panel_label, spec_name) in zip(axes, panel_specs):
+    marg = load_horizon_grid(spec_name, kind="marginal")
+    typ = load_horizon_grid(spec_name, kind="typical")
+
+    g50 = marg.query("p == 0.5").sort_values("date")
+    g50 = g50[g50["date"] <= x_max]
+    ax.plot(
+        g50["date"], g50["t_hours_q50"], color="0.6", linewidth=1.2, label="50% success"
+    )
+    ax.fill_between(
+        g50["date"], g50["t_hours_q025"], g50["t_hours_q975"], color="0.6", alpha=0.06
+    )
+
+    g80t = typ.query("p == 0.8").sort_values("date")
+    g80t = g80t[g80t["date"] <= x_max]
+    ax.plot(
+        g80t["date"], g80t["t_hours_q50"], color="C0", linewidth=2, label="80% typical"
+    )
+    ax.fill_between(
+        g80t["date"], g80t["t_hours_q025"], g80t["t_hours_q975"], color="C0", alpha=0.10
+    )
+
+    g80m = marg.query("p == 0.8").sort_values("date")
+    g80m = g80m[g80m["date"] <= x_max]
+    ax.plot(
+        g80m["date"],
+        g80m["t_hours_q50"],
+        color="C3",
+        linewidth=2,
+        linestyle="--",
+        label="80% marginal",
+    )
+    ax.fill_between(
+        g80m["date"], g80m["t_hours_q025"], g80m["t_hours_q975"], color="C3", alpha=0.10
+    )
+
+    pts_typ = load_horizon_points(spec_name, kind="typical").query("p == 0.8")
+    pts_marg = load_horizon_points(spec_name, kind="marginal").query("p == 0.8")
+    ax.errorbar(
+        pts_typ["release_date"],
+        pts_typ["t_hours_q50"],
+        yerr=np.vstack(
+            [
+                pts_typ["t_hours_q50"] - pts_typ["t_hours_q025"],
+                pts_typ["t_hours_q975"] - pts_typ["t_hours_q50"],
+            ]
+        ),
+        fmt="o",
+        color="C0",
+        ecolor="C0",
+        elinewidth=1.2,
+        capsize=2,
+        alpha=0.6,
+        zorder=5,
+        markersize=4,
+    )
+    ax.errorbar(
+        pts_marg["release_date"],
+        pts_marg["t_hours_q50"],
+        yerr=np.vstack(
+            [
+                pts_marg["t_hours_q50"] - pts_marg["t_hours_q025"],
+                pts_marg["t_hours_q975"] - pts_marg["t_hours_q50"],
+            ]
+        ),
+        fmt="s",
+        color="C3",
+        ecolor="C3",
+        elinewidth=1.2,
+        capsize=2,
+        alpha=0.6,
+        zorder=5,
+        markersize=4,
+    )
+
+    LABELS_ALL_MT = {
+        "gpt_3_5_turbo_instruct": ("GPT-3.5", (8, -8)),
+        "claude_3_5_sonnet_20241022_inspect": ("Sonnet 3.5 (new)", (8, -8)),
+        "claude_opus_4_5_inspect": ("Opus 4.5", (8, 0)),
+        "gpt_5_2": ("GPT-5.2", (8, -8)),
+    }
+    for _, r in pts_typ.iterrows():
+        if r["model"] in LABELS_ALL_MT:
+            txt, ofs = LABELS_ALL_MT[r["model"]]
+            ax.annotate(
+                txt,
+                (r["release_date"], r["t_hours_q50"]),
+                textcoords="offset points",
+                xytext=ofs,
+                fontsize=7,
+                color="C0",
+                alpha=0.8,
+                va="center",
+            )
+
+    ax.axhline(
+        30 * 24, color="red", linestyle="--", alpha=0.3, linewidth=1, label="1 month"
+    )
+
+    ax.set_yscale("log")
+    ax.set_title(f"{panel_label} (all models)", fontsize=12)
+    ax.set_xlim(pd.Timestamp("2023-01-01"), x_max)
+    ax.set_ylim(1e-3, 365 * 24)
+    ax.xaxis.set_major_locator(mdates.YearLocator())
+    ax.xaxis.set_major_formatter(mdates.DateFormatter("%Y"))
+
+    tick_hours = np.array(
+        [1 / 60, 6 / 60, 1.0, 10.0, 4 * 24.0, 30 * 24.0, 6 * 30 * 24.0]
+    )
+    ax.set_yticks(tick_hours)
+    ax.set_yticklabels([_format_duration_hours(float(t)) for t in tick_hours])
+    ax.grid(True, which="major", axis="y", linestyle="--", linewidth=0.8, alpha=0.25)
+
+axes[0].set_ylabel("")
+axes[0].legend(fontsize=7.5, loc="upper left")
+axes[1].set_xlabel("Release date")
+axes[0].set_xlabel("Release date")
+fig.tight_layout()
+plt.show()
+```
+
+```{python}
+# | label: fig-difficulty-variation-all
+# | fig-cap: "Difficulty variation for all models. Each dot is a task. The y-axis shows how much harder or easier the task is than a typical task of the same human time."
+# | echo: false
+
+_meta_lin_all = load_meta("time_irt__theta_linear")
+_sp_all = _meta_lin_all["scalar_params"]
+sigma_b_all = _sp_all["sigma_b"]["q50"]
+kappa_all = _sp_all["kappa"]["q50"]
+mean_log_t_hours_all = _meta_lin_all["mean_log_t_hours"]
+diff_mult_all = np.exp(sigma_b_all / kappa_all)
+diff_mult_2sig_all = np.exp(2 * sigma_b_all / kappa_all)
+
+resid_all = pd.read_csv(diagdir("time_irt__theta_linear") / "difficulty_residuals.csv")
+t_hours_all = np.exp(resid_all["x"].values + mean_log_t_hours_all)
+t_minutes_all = t_hours_all * 60
+time_multiplier_all = np.exp(resid_all["u_hat"].values / kappa_all)
+
+fig, ax = plt.subplots(figsize=(8, 4.5))
+
+ax.scatter(t_minutes_all, time_multiplier_all, s=18, alpha=0.45, color="C0", edgecolors="none")
+ax.axhline(1.0, color="gray", linestyle="--", linewidth=0.8, alpha=0.6)
+
+ax.axhspan(1 / diff_mult_all, diff_mult_all, color="C0", alpha=0.06, zorder=0)
+ax.axhline(diff_mult_all, color="C0", linewidth=0.7, alpha=0.35, linestyle=":")
+ax.axhline(1 / diff_mult_all, color="C0", linewidth=0.7, alpha=0.35, linestyle=":")
+
+ax.axhspan(1 / diff_mult_2sig_all, diff_mult_2sig_all, color="C0", alpha=0.03, zorder=0)
+ax.axhline(diff_mult_2sig_all, color="C0", linewidth=0.5, alpha=0.25, linestyle=":")
+ax.axhline(1 / diff_mult_2sig_all, color="C0", linewidth=0.5, alpha=0.25, linestyle=":")
+
+xmax_dv = max(t_minutes_all) * 1.5
+ax.text(xmax_dv, diff_mult_all, f"  +1\u03c3 = {diff_mult_all:.1f}x",
+        va="center", fontsize=8, color="C0", alpha=0.7)
+ax.text(xmax_dv, 1 / diff_mult_all, f"  \u22121\u03c3 = {1/diff_mult_all:.2f}x",
+        va="center", fontsize=8, color="C0", alpha=0.7)
+ax.text(xmax_dv, diff_mult_2sig_all, f"  +2\u03c3 = {diff_mult_2sig_all:.0f}x",
+        va="center", fontsize=8, color="C0", alpha=0.7)
+
+ax.set_xscale("log")
+ax.set_yscale("log")
+
+tick_minutes = [1/60, 0.5, 1, 5, 10, 30, 60, 4*60, 8*60]
+tick_labels = ["1 sec", "30 sec", "1 min", "5 min", "10 min", "30 min", "1 hr", "4 hr", "8 hr"]
+ax.set_xticks(tick_minutes)
+ax.set_xticklabels(tick_labels, fontsize=8)
+ax.set_xlim(min(t_minutes_all) * 0.5, max(t_minutes_all) * 2)
+
+yticks_dv = [1/diff_mult_2sig_all, 1/diff_mult_all, 0.5, 1.0, 2.0, diff_mult_all, diff_mult_2sig_all]
+ax.set_yticks(yticks_dv)
+ax.set_yticklabels([f"{y:.1f}x" if y >= 0.1 else f"{y:.2f}x" for y in yticks_dv], fontsize=8)
+
+ax.set_xlabel("Human time-to-complete")
+ax.set_ylabel("Difficulty multiplier\n(1x = average for this task length)")
+ax.grid(True, which="major", axis="y", linestyle="--", linewidth=0.5, alpha=0.2)
+
+fig.tight_layout()
+plt.show()
+```
+
+```{python}
+# | label: fig-doubling-time-all
+# | fig-cap: "Posterior distribution of the horizon doubling time under the linear model (all models)."
+# | echo: false
+
+draws_all = pd.read_csv(figdir("time_irt__theta_linear") / "doubling_time_draws.csv")
+dt_months_all = draws_all["doubling_time_years"].values * 12
+
+kde_all = gaussian_kde(dt_months_all, bw_method="silverman")
+x_all = np.linspace(dt_months_all.min() - 0.3, dt_months_all.max() + 0.3, 400)
+
+q025_all, q50_all, q975_all = np.percentile(dt_months_all, [2.5, 50, 97.5])
+
+fig, ax = plt.subplots(figsize=(7, 3.2))
+ax.fill_between(x_all, kde_all(x_all), alpha=0.15, color="C0")
+ax.plot(x_all, kde_all(x_all), color="C0", linewidth=2)
+ax.axvline(q50_all, color="black", linewidth=1.5, label=f"Median = {q50_all:.1f} months")
+ax.axvline(
+    q025_all,
+    color="black",
+    linewidth=1,
+    linestyle="--",
+    alpha=0.6,
+    label=f"95% CrI: [{q025_all:.1f}, {q975_all:.1f}]",
+)
+ax.axvline(q975_all, color="black", linewidth=1, linestyle="--", alpha=0.6)
+ax.set_xlabel("Doubling time (months)")
+ax.set_ylabel("Posterior density")
+ax.legend(fontsize=9)
+fig.tight_layout()
+plt.show()
+```
+
+## Appendix: Marginal vs typical success curves
+
+These are fitted on v1.1 data only.
+
+```{python}
+# | label: fig-p-curves-appendix
+# | fig-cap: "P(success) vs human task time for two models. Solid colored line: typical (average-difficulty task). Solid black line: marginal (averaged over task random effects). Dashed gray line marks 80% success."
+# | echo: false
+
+_spec_lin = "time_irt__theta_linear__v11"
+_pc = pd.read_csv(figdir(_spec_lin) / "p_curves.csv")
+
+
+def _interp_crossing(t_hours, p_values, threshold=0.8):
+    """Interpolate where a decreasing curve crosses a threshold."""
+    t = np.asarray(t_hours, dtype=float)
+    p = np.asarray(p_values, dtype=float)
+    for i in range(len(p) - 1):
+        if (p[i] >= threshold) != (p[i + 1] >= threshold):
+            frac = (threshold - p[i]) / (p[i + 1] - p[i])
+            return float(
+                np.exp(np.log(t[i]) + frac * (np.log(t[i + 1]) - np.log(t[i])))
+            )
+    return None
+
+
+_panels = [
+    ("GPT-5.2", "gpt_5_2", "C1"),
+    ("Claude 3.7 Sonnet", "claude_3_7_sonnet_inspect", "C0"),
+]
+
+fig, axes = plt.subplots(1, 2, figsize=(9.5, 4.0), sharey=True)
+
+for ax, (title, model_id, color) in zip(axes, _panels):
+    typ = _pc[(_pc["model"] == model_id) & (_pc["curve"] == "typical")].sort_values(
+        "t_hours"
+    )
+    marg = _pc[(_pc["model"] == model_id) & (_pc["curve"] == "marginal")].sort_values(
+        "t_hours"
+    )
+
+    # Typical curve
+    ax.plot(typ["t_hours"], typ["q50"], color=color, linewidth=2, label="Typical")
+    ax.fill_between(typ["t_hours"], typ["q10"], typ["q90"], color=color, alpha=0.12)
+
+    # Marginal curve
+    ax.plot(marg["t_hours"], marg["q50"], color="black", linewidth=2, label="Marginal")
+    ax.fill_between(
+        marg["t_hours"], marg["q10"], marg["q90"], color="black", alpha=0.08
+    )
+
+    # 80% threshold line
+    ax.axhline(0.8, color="gray", linestyle="--", linewidth=1, alpha=0.6)
+
+    # 80% crossing annotations (interpolated from the actual curves)
+    t_cross_typ = _interp_crossing(typ["t_hours"], typ["q50"])
+    t_cross_marg = _interp_crossing(marg["t_hours"], marg["q50"])
+
+    if t_cross_typ is not None:
+        ax.plot(t_cross_typ, 0.8, "o", color=color, markersize=7, zorder=5)
+        ax.annotate(
+            _format_duration_hours(t_cross_typ),
+            (t_cross_typ, 0.8),
+            textcoords="offset points",
+            xytext=(0, 12),
+            fontsize=8,
+            ha="center",
+            color=color,
+            fontweight="bold",
+        )
+    if t_cross_marg is not None:
+        ax.plot(t_cross_marg, 0.8, "o", color="black", markersize=7, zorder=5)
+        ax.annotate(
+            _format_duration_hours(t_cross_marg),
+            (t_cross_marg, 0.8),
+            textcoords="offset points",
+            xytext=(0, -16),
+            fontsize=8,
+            ha="center",
+            color="black",
+            fontweight="bold",
+        )
+
+    ax.set_xscale("log")
+    t_max = float(typ["t_hours"].max())
+    ax.set_xlim(1e-3, t_max * 1.15)
+    ax.set_ylim(0, 1.02)
+    ax.set_title(title, fontsize=12)
+    ax.set_xlabel("Human task time")
+
+    tick_hours = np.array([1 / 60, 6 / 60, 1.0, 10.0])
+    ax.set_xticks(tick_hours)
+    ax.set_xticklabels(
+        [_format_duration_hours(float(t)) for t in tick_hours], rotation=35, ha="right"
+    )
+    ax.grid(True, which="major", axis="both", linestyle="--", linewidth=0.8, alpha=0.25)
+
+axes[0].set_ylabel("P(success)")
+axes[0].legend(fontsize=9, loc="lower left")
+fig.tight_layout()
+plt.show()
+```

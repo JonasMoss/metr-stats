@@ -1,7 +1,12 @@
-# Forecasts from METR time horizons are prior-driven: A Bayesian
-analysis
+# (Updated) METR’s data can’t distinguish between trajectories (and 80%
+horizons are an order of magnitude off)
 Jonas Moss
-2026-02-13
+2026-02-19
+
+*Update:* Added GPT-5.2 to the main part of the text, this uses all data
+from v1.1. Added appendix using all METR models, by joining v1.0 and
+v1.1. Added appendix with marginal vs typical P(success) curves. Thanks
+to Thomas Kwa for telling me about this.
 
 ## TLDR
 
@@ -12,47 +17,39 @@ model.
   growth.** Four trajectory shapes (linear, quadratic, power-law,
   saturating) fit the existing data equally well but diverge on
   forecasts. For instance, the 95% credible interval for the 125-year
-  crossing is 2031-01 – 2033-10 for linear and 2028-02 – 2031-09 for
+  crossing is 2031-06 – 2033-10 for linear and 2028-07 – 2032-03 for
   quadratic.
 - **METR’s headline horizon numbers overstate current capability by
   roughly an order of magnitude at 80% success.** METR doesn’t model
   variation in task difficulty, so their horizons reflect a task of
   typical difficulty for its length. But tasks of the same length vary a
-  lot in how hard they are, and at 80% success the hard ones dominate.
-  Curiously, this doesn’t affect timelines by more than ~1 year, as it’s
-  just a level-shift.
+  lot in how hard they are, and difficult tasks pull the horizon down
+  more than the easy tasks push it up. Curiously, this doesn’t affect
+  timelines by more than ~1 year, as it’s just a level-shift.
 - **We need data about the human times to quantify uncertainty.**
   Credible intervals throughout are too narrow because I treat human
-  times as known rather than estimating them as latent variables. I’m
+  times as known rather than estimating using latent variables. I’m
   doing this because I don’t have access to all the raw data. This could
   be a big deal, and could also affect the $80\%$ horizons.
 - Doubling time under the standard linear (exponential growth) model is
-  ~4.1 months, which is similar to METR’s estimate (95% credible
-  interval: 3.5–5.0, but see caveat above).
+  ~4.3 months, which is similar to METR’s estimate (95% credible
+  interval: 3.7–5.1, but see caveat above).
 
 ## METR data
 
 Let’s start with a plot that shouldn’t be too surprising. Four
-reasonable models fit the [METR
-data](https://github.com/METR/eval-analysis-public/tree/main/reports/time-horizon-1-1/data/raw)
+reasonable models fit the [METR data (v
+1.1)](https://github.com/METR/eval-analysis-public/tree/main/reports/time-horizon-1-1/data/raw)
 equally well. They agree about the past but disagree strongly about the
 future.
 
-<div id="fig-horizon-fan">
-
 ![](https://raw.githubusercontent.com/JonasMoss/metr-stats/main/metr-stats_files/figure-commonmark/fig-horizon-fan-output-1.png)
 
-Figure 1: 50%-success horizon vs. release date under four trajectory
-models.
-
-</div>
-
-The model selection scores known as ELPD-LOO differ by at most ~7
-points.[^1] Calibration is nearly identical, with Brier $\approx$ 0.066
+The model selection scores known as ELPD-LOO differ by at most ~6
+points.[^1] Calibration is nearly identical, with Brier $\approx$ 0.067
 across the board. Your prior matters a lot here and has clear-cut
 consequences, as the models agree about the past but disagree strongly
-about the future. The current data on METR’s Github doesn’t include
-GPT-5.2 at the moment, if your’e missing it.
+about the future. The latest data point is GPT-5.2 (December 2025).
 
 These curves are fitted using a Bayesian item response theory model
 described below. Before describing it, let’s recall METR’s analysis of
@@ -69,9 +66,9 @@ the time horizon. They proceed in two stages:
     a doubling time of ~4 months.
 
 This is good modeling and gets the main story right, but there are some
-non-standard choices. For instance, the slope $\beta_i$ is per-model
-rather than per-task (which is unusual in item response theory) and
-Stage 1 uncertainty doesn’t propagate into Stage 2 (METR uses the
+non-standard choices here. For instance, the slope $\beta_i$ varies with
+model rather than task (which is unusual in item response theory) and
+Stage 1 uncertainty is not accounted for in Stage 2 (METR uses the
 bootstrap). It also treats every task of the same length as equally
 difficult and only considers one trajectory shape.
 
@@ -124,12 +121,12 @@ Ability and difficulty parameters $\theta_i, b_j$ in the 2PL are hard to
 interpret. The scale is arbitrary, and it’s not clear what, for
 instance, a 0.1 increase in ability actually means. Or whether it would
 be better to take a log-transform of the parameter, etc. The METR data
-is cool and and famous because each task comes with a human time, which
+is cool and famous because each task comes with a human time, which
 gives us a natural and interpretable scale for difficulty. So let’s
 connect human time to difficulty first.
 
 $$
-b_j \sim \mathcal{N}(\alpha + \kappa \cdot \log t_j, \;\sigma_b)
+b_j \sim \mathcal{N}(\alpha + \kappa \log t_j, \;\sigma_b)
 $$
 
 Each task’s difficulty has a mean that depends on log human time, plus a
@@ -137,41 +134,31 @@ random component to account for the fact that same-length tasks are not
 born equal. (METR treats all tasks of identical length as equally hard.)
 
 Since difficulty increases with log human time at rate $\kappa$, we can
-convert any difficulty value back into a time. Call it the *equivalent
-difficulty time*. If a task takes humans 10 minutes but is unusually
-hard for AI, its equivalent difficulty time might be 50 minutes, meaning
-it’s as hard as a typical 50-minute task. Formally, a task with human
+convert any difficulty value back into a time, an *equivalent difficulty
+time*. If a task takes humans 10 minutes but is unusually hard for AI,
+its equivalent difficulty time might be 50 minutes. A task with human
 time $t$ and difficulty residual $u$ has equivalent difficulty time
-$t \cdot \exp(u / \kappa)$.
+$t \cdot \exp(u / \kappa)$.[^2]
 
-I estimate $\sigma_b \approx$ 1.44 (posterior median), which is quite
+I estimate $\sigma_b \approx$ 1.51 (posterior median), which is quite
 large once we interpret it. One standard deviation of unexplained
 difficulty corresponds to a ~4.7x multiplier in equivalent difficulty
-time.[^2] A task that’s $1\sigma$ harder than average for its length is
-as hard as a typical task 4.7x longer. A task that’s $2\sigma$ harder is
-as hard as a typical task roughly 22x longer, so tasks of identical
-human time can span a huge range in actual difficulty for AI.
+time.[^3] A task that’s $1\sigma$ harder than the average for its length
+is as hard as a task 4.7x longer. And a task that’s $2\sigma$ harder is
+as hard as a task roughly 23x longer. So tasks of identical human time
+can span a huge range in difficulty for the AI models.
 
 Of course, this is a modeling choice that can be wrong. There’s no
 guarantee that difficulty is linear in $\log t_j$, so we need
 diagnostics to check. The plot below does double duty as model
 diagnostic and explanation of what the random effect means in practice.
 
-<div id="fig-difficulty-variation">
-
 ![](https://raw.githubusercontent.com/JonasMoss/metr-stats/main/metr-stats_files/figure-commonmark/fig-difficulty-variation-output-1.png)
 
-Figure 2: Each dot is a task. The y-axis shows how much harder or easier
-the task is than a typical task of the same human time, expressed as a
-multiplier in equivalent task time. Shaded bands show ±1σ and ±2σ.
-
-</div>
-
-The y-axis is the difficulty multiplier from above. A dot at 5x means
-the task’s equivalent difficulty time is 5x its actual human time. Even
-within the ±1σ band, tasks of identical human time can differ
-multiplicatively by a factor of 22x in equivalent difficulty, so the
-practical spread is enormous.
+A plotted dot at 5x means the task’s equivalent difficulty time is 5x
+its actual human time. Even within the $\pm 1\sigma$ band, tasks of
+identical human time can differ multiplicatively by a factor of 23x in
+equivalent difficulty time, so the practical spread is enormous.
 
 There’s not too much curvature in the relationship between log human
 time and difficulty, so I think the log-linear form is decent, but it’s
@@ -195,7 +182,7 @@ $$
 where $x_i$ is the model release date in years, centered at the mean
 (September 2024). I’m still using a random effect for model ability
 here, since nobody seriously thinks every model released on the same
-date must be equally capable. I’m looking at four shapes for $f$:[^3]
+date must be equally capable. I’m looking at four shapes for $f$:[^4]
 
 | Model | $f(x)$ | Params | Intuition |
 |:---|:---|:--:|:---|
@@ -210,7 +197,9 @@ which visually fits the original METR graphs better than a plain linear
 fit. But since the available data doesn’t go that far back, I don’t need
 to, and the value of including those early points in a forecasting
 exercise is questionable anyway. Getting hold of the latest data points
-is more important.
+is more important. (*Added:* I use all the data in the appendix below,
+but I do not attempt a piecewise linear since running the STAN programs
+take a lot of time.)
 
 All models share the same 2PL likelihood and task parameters ($b_j$,
 $a_j$, $\alpha$, $\kappa$, $\sigma_b$). Only the model for $\theta$
@@ -221,159 +210,11 @@ enough time. Here are posteriors for the 50% crossing across our models.
 The saturating model almost never crosses the 1-month and 125-year
 thresholds since it saturates too fast.
 
-<div id="tbl-horizon-crossing">
-
-Table 1: Predicted crossing dates for two horizon thresholds (1 month
-and 125 years), by trajectory model.
-
-<div class="cell-output cell-output-display cell-output-markdown"
-execution_count="5">
-
-<table style="width:100%">
-
-<thead>
-
-<tr>
-
-<th rowspan="2">
-
-Trend
-</th>
-
-<th colspan="2" style="text-align:center;border-bottom:none">
-
-1 month
-</th>
-
-<th colspan="2" style="text-align:center;border-bottom:none">
-
-125 years
-</th>
-
-</tr>
-
-<tr>
-
-<th>
-
-Mean
-</th>
-
-<th>
-
-95% CrI
-</th>
-
-<th>
-
-Mean
-</th>
-
-<th>
-
-95% CrI
-</th>
-
-</tr>
-
-</thead>
-
-<tbody>
-
-<tr>
-
-<td>
-
-Linear
-</td>
-
-<td>
-
-2028-07
-</td>
-
-<td>
-
-2027-12 – 2029-05
-</td>
-
-<td>
-
-2032-03
-</td>
-
-<td>
-
-2031-01 – 2033-10
-</td>
-
-</tr>
-
-<tr>
-
-<td>
-
-Quadratic
-</td>
-
-<td>
-
-2027-08
-</td>
-
-<td>
-
-2026-12 – 2028-07
-</td>
-
-<td>
-
-2029-07
-</td>
-
-<td>
-
-2028-02 – 2031-09
-</td>
-
-</tr>
-
-<tr>
-
-<td>
-
-Power-law
-</td>
-
-<td>
-
-2027-10
-</td>
-
-<td>
-
-2027-02 – 2028-11
-</td>
-
-<td>
-
-2030-02
-</td>
-
-<td>
-
-2028-08 – 2032-11
-</td>
-
-</tr>
-
-</tbody>
-
-</table>
-
-</div>
-
-</div>
+| Trend     | 1mo Mean | 1mo 95% CrI       | 125y Mean | 125y 95% CrI      |
+|:----------|:---------|:------------------|:----------|:------------------|
+| Linear    | 2028-09  | 2028-03 – 2029-05 | 2032-07   | 2031-06 – 2033-10 |
+| Quadratic | 2027-11  | 2027-03 – 2028-10 | 2029-12   | 2028-07 – 2032-03 |
+| Power-law | 2028-01  | 2027-05 – 2029-01 | 2030-06   | 2028-12 – 2033-01 |
 
 ## Problems with 80% success
 
@@ -396,14 +237,7 @@ they give different answers.
 At 50%, the two definitions agree exactly. But at 80%, the gap is
 roughly an order of magnitude!
 
-<div id="fig-marginal-typical">
-
 ![](https://raw.githubusercontent.com/JonasMoss/metr-stats/main/metr-stats_files/figure-commonmark/fig-marginal-typical-output-1.png)
-
-Figure 3: Horizon forecasts at 80% success probability. Left: linear
-trajectory. Right: quadratic (constrained).
-
-</div>
 
 So, on the one hand, it’s the variance ($\sigma_b \approx 1.44$) alone
 that causes these two plots to be necessary under our model. But on the
@@ -417,321 +251,29 @@ The marginal horizon is the one that matters for practical purposes.
 difficulty for their length. The marginal accounts for the full spread
 of tasks, so it’s what you actually care about when predicting success
 on a random task of some length. That said, from the plot we see
-frontier performance of roughly 5 minutes, which does sound sort of
+frontier performance of roughly 6 minutes, which does sound sort of
 short to me. I’m used to LLMs roughly one-shotting longer tasks than
 that, but it usually takes some iterations to get it just right. Getting
 the context and subtle intentions right on the first try is hard, so I’m
 willing to believe this estimate is reasonable.
 
-Anyway, the predicted crossing dates at 80% success are:
-
-<div id="tbl-horizon-80-1mo">
-
-Table 2: Predicted date when the 80%-success horizon reaches 1 month.
-The saturating model is omitted (almost never crosses).
-
-<div class="cell-output cell-output-display cell-output-markdown"
-execution_count="7">
-
-<table style="width:100%">
-
-<thead>
-
-<tr>
-
-<th rowspan="2">
-
-Trend
-</th>
-
-<th colspan="2" style="text-align:center;border-bottom:none">
-
-Typical
-</th>
-
-<th colspan="2" style="text-align:center;border-bottom:none">
-
-Marginal
-</th>
-
-</tr>
-
-<tr>
-
-<th>
-
-Mean
-</th>
-
-<th>
-
-95% CrI
-</th>
-
-<th>
-
-Mean
-</th>
-
-<th>
-
-95% CrI
-</th>
-
-</tr>
-
-</thead>
-
-<tbody>
-
-<tr>
-
-<td>
-
-Linear
-</td>
-
-<td>
-
-2028-12
-</td>
-
-<td>
-
-2028-04 – 2029-10
-</td>
-
-<td>
-
-2030-07
-</td>
-
-<td>
-
-2029-08 – 2031-09
-</td>
-
-</tr>
-
-<tr>
-
-<td>
-
-Quadratic
-</td>
-
-<td>
-
-2027-10
-</td>
-
-<td>
-
-2027-02 – 2028-11
-</td>
-
-<td>
-
-2028-09
-</td>
-
-<td>
-
-2027-08 – 2030-04
-</td>
-
-</tr>
-
-<tr>
-
-<td>
-
-Power-law
-</td>
-
-<td>
-
-2028-02
-</td>
-
-<td>
-
-2027-05 – 2029-04
-</td>
-
-<td>
-
-2029-02
-</td>
-
-<td>
-
-2028-01 – 2031-01
-</td>
-
-</tr>
-
-</tbody>
-
-</table>
-
-</div>
-
-</div>
-
-<div id="tbl-horizon-80-125y">
-
-Table 3: Predicted date when the 80%-success horizon reaches 125 years.
-The saturating model is omitted (never crosses).
-
-<div class="cell-output cell-output-display cell-output-markdown"
-execution_count="8">
-
-<table style="width:100%">
-
-<thead>
-
-<tr>
-
-<th rowspan="2">
-
-Trend
-</th>
-
-<th colspan="2" style="text-align:center;border-bottom:none">
-
-Typical
-</th>
-
-<th colspan="2" style="text-align:center;border-bottom:none">
-
-Marginal
-</th>
-
-</tr>
-
-<tr>
-
-<th>
-
-Mean
-</th>
-
-<th>
-
-95% CrI
-</th>
-
-<th>
-
-Mean
-</th>
-
-<th>
-
-95% CrI
-</th>
-
-</tr>
-
-</thead>
-
-<tbody>
-
-<tr>
-
-<td>
-
-Linear
-</td>
-
-<td>
-
-2032-08
-</td>
-
-<td>
-
-2031-05 – 2034-03
-</td>
-
-<td>
-
-2034-02
-</td>
-
-<td>
-
-2032-09 – 2036-03
-</td>
-
-</tr>
-
-<tr>
-
-<td>
-
-Quadratic
-</td>
-
-<td>
-
-2029-09
-</td>
-
-<td>
-
-2028-03 – 2032-01
-</td>
-
-<td>
-
-2030-05
-</td>
-
-<td>
-
-2028-09 – 2033-05
-</td>
-
-</tr>
-
-<tr>
-
-<td>
-
-Power-law
-</td>
-
-<td>
-
-2030-05
-</td>
-
-<td>
-
-2028-09 – 2033-05
-</td>
-
-<td>
-
-2031-04
-</td>
-
-<td>
-
-2029-04 – 2035-02
-</td>
-
-</tr>
-
-</tbody>
-
-</table>
-
-</div>
-
-</div>
+Anyway, the predicted crossing dates at 80% success are below. First,
+the 1-month threshold (saturating model omitted since it almost never
+crosses):
+
+| Trend     | Typical Mean | Typical 95% CrI   | Marginal Mean | Marginal 95% CrI  |
+|:----------|:-------------|:------------------|:--------------|:------------------|
+| Linear    | 2029-02      | 2028-07 – 2029-10 | 2030-10       | 2029-12 – 2031-10 |
+| Quadratic | 2028-02      | 2027-05 – 2029-02 | 2029-01       | 2027-12 – 2030-08 |
+| Power-law | 2028-04      | 2027-08 – 2029-06 | 2029-06       | 2028-05 – 2031-02 |
+
+And the 125-year threshold:
+
+| Trend     | Typical Mean | Typical 95% CrI   | Marginal Mean | Marginal 95% CrI  |
+|:----------|:-------------|:------------------|:--------------|:------------------|
+| Linear    | 2032-12      | 2031-10 – 2034-03 | 2034-08       | 2033-04 – 2036-02 |
+| Quadratic | 2030-02      | 2028-08 – 2032-07 | 2030-12       | 2029-02 – 2033-12 |
+| Power-law | 2030-09      | 2029-02 – 2033-06 | 2031-09       | 2029-09 – 2035-03 |
 
 Make of this what you will, but let’s go through one scenario. Let’s say
 I’m a believer in superexponential models with no preference between
@@ -739,20 +281,18 @@ quadratic and power-law, so I have 50-50 weighting on those. Suppose
 also I believe that 125 years is the magic number for the auto-coder of
 [AI Futures](https://www.aifuturesmodel.com/), but I prefer $80\%$ to
 $50\%$ as the latter is too brittle. Then, using the arguably correct
-marginal formulation, my timeline has mean roughly November 2030, but
-the typical framework yields roughly January 2030 instead. And this
-isn’t too bad, just a difference of ~0.8 years! The linear model is
-similar, with timelines pushed out roughly 1.6 years. So, the wide
-marginal-typical gap doesn’t translate into *that* big timeline gaps, as
-both trajectories have the same “slope”, just at a different level.
+marginal formulation, my timeline has mean roughly April 2031, but the
+typical framework yields roughly June 2030 instead. And this isn’t too
+bad, just a difference of ~0.9 years! The linear model is similar, with
+timelines pushed out roughly 1.7 years. So, the wide marginal-typical
+gap doesn’t translate into *that* big of a timeline gap, as both
+trajectories have the same “slope”, just at a different level.
 
 Let’s also have a look at METR’s actual numbers. They report an 80%
 horizon of around 15 minutes for Claude 3.7 Sonnet (in the original
-paper). Our typical 80% horizon for that model under the linear trend is
-about 22.0 min, and the marginal is about 1.0 min—roughly 16x shorter
-than METR’s. Recall that METR’s methodology doesn’t model task-level
-difficulty variation at all, so their 80% horizon effectively reflects
-the typical tasks at each length rather than a random draw.
+paper). Our typical 80% horizon for that model under the linear model is
+about 21.1 min, and the marginal is about 0.8 min, roughly 15x shorter
+than METR’s.
 
 ## Modeling $t_j$
 
@@ -797,29 +337,56 @@ grounds using its failure-rate interpretation.
 - There’s plenty of best-practice stuff I haven’t done, such as prior
   sensitivity analysis. (But we have a lot of data, and I wouldn’t
   expect it to matter too much.)
-- The doubling time posterior median is 4.1 months (95% credible
-  interval: 3.5–5.0), which is close to METR’s v1.1 estimate. Of course,
+- The doubling time posterior median is 4.3 months (95% credible
+  interval: 3.7–5.1), which is close to METR’s v1.1 estimate. Of course,
   doubling time only makes sense for the linear model above, as the
   doubling time of the other models varies with time.
 
-<div id="fig-doubling-time">
-
 ![](https://raw.githubusercontent.com/JonasMoss/metr-stats/main/metr-stats_files/figure-commonmark/fig-doubling-time-output-1.png)
 
-Figure 4: Posterior distribution of the horizon doubling time under the
-linear model.
+## Appendix: Results for all models
 
-</div>
+Recall that the main text uses only METR v1.1 data. In this appendix I
+use all available data (v1.0 + v1.1 merged). The overall story is
+similar, but the pre-Sonnet-3.5 models introduce a visible kink in the
+trajectory that a single smooth trend struggles with. (This is
+well-known.)
 
-[^1]: The ELPD-LOO estimates are: linear $-2191.9$ (SE $70.1$),
-    saturating $-2195.9$ (SE $70.2$), power-law $-2197.0$ (SE $70.1$),
-    quadratic $-2198.7$ (SE $70.0$).
+The ELPD-LOO scores differ by at most ~3 points, with Brier $\approx$
+0.064.[^5]
 
-[^2]: The multiplier is $\exp(\sigma_b / \kappa)$ where
+![](https://raw.githubusercontent.com/JonasMoss/metr-stats/main/metr-stats_files/figure-commonmark/fig-horizon-fan-all-output-1.png)
+
+![](https://raw.githubusercontent.com/JonasMoss/metr-stats/main/metr-stats_files/figure-commonmark/fig-marginal-typical-all-output-1.png)
+
+![](https://raw.githubusercontent.com/JonasMoss/metr-stats/main/metr-stats_files/figure-commonmark/fig-difficulty-variation-all-output-1.png)
+
+![](https://raw.githubusercontent.com/JonasMoss/metr-stats/main/metr-stats_files/figure-commonmark/fig-doubling-time-all-output-1.png)
+
+## Appendix: Marginal vs typical success curves
+
+These are fitted on v1.1 data only.
+
+![](https://raw.githubusercontent.com/JonasMoss/metr-stats/main/metr-stats_files/figure-commonmark/fig-p-curves-appendix-output-1.png)
+
+[^1]: The ELPD-LOO estimates are: power-law $\-2598\.2$ (SE $79\.2$),
+    saturating $\-2601\.0$ (SE $79\.1$), quadratic $\-2601\.0$ (SE
+    $79\.1$), linear $\-2604\.0$ (SE $79\.3$).
+
+[^2]: Define $t^*$ as the human time whose mean difficulty equals $b_j$.
+    Then $\alpha + \kappa \log t^* = \alpha + \kappa \log t_j + u_j$, so
+    $\log t^* = \log t_j + u_j / \kappa$ and
+    $t^* = t_j \exp(u_j / \kappa)$.
+
+[^3]: The multiplier is $\exp(\sigma_b / \kappa)$ where
     $\kappa \approx 0.93$ is the posterior median
 
-[^3]: Quadratic is the simplest choice of superexponential function. You
+[^4]: Quadratic is the simplest choice of superexponential function. You
     could spin a story in its favor, but using it is somewhat arbitrary.
     The power-law is the simplest function that can be both super- and
     subexponential (in practice turns out to be superexponential here
     though), and I included the saturating model because, well, why not?
+
+[^5]: The ELPD-LOO estimates are: power-law $\-5344\.1$ (SE $135\.7$),
+    quadratic $\-5345\.4$ (SE $135\.9$), saturating $\-5346\.2$ (SE
+    $136\.0$), linear $\-5347\.3$ (SE $135\.7$).
