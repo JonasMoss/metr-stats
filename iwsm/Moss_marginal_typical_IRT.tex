@@ -21,7 +21,7 @@
 
 \email{jonas.moss@bi.no}
 
-\abstract{We reanalyze the METR AI agent benchmark using a Bayesian 2PL item response theory model with task difficulty modeled as a random effect. ``Marginal'' success, averaged over the difficulty distribution, is roughly an order of magnitude lower than ``typical'' success at mean difficulty. This gap matters for AI safety forecasting but is invisible to methods that ignore task-level variation.}
+\abstract{We reanalyze the METR AI agent benchmark using a Bayesian 2PL item response theory model with task difficulty modeled as a random effect. ``Marginal'' success, averaged over the difficulty distribution, is roughly an order of magnitude lower than ``typical'' success at mean difficulty. This gap matters for AI forecasting but is invisible to methods that ignore task-level variation.}
 
 \keywords{Item response theory; AI benchmarks; Bayesian inference; AI safety.}
 
@@ -29,16 +29,13 @@
 
 \section{Introduction}
 
-How quickly are AI systems getting better at real-world tasks? This question has become urgent for governments and AI labs alike. The most influential benchmark for autonomous AI agents is maintained by METR, a non-profit safety organization. Their ``time horizon'' analysis drives how labs and regulators think about the pace of AI progress. Getting the methodology right matters.
+How quickly are AI systems getting better at real-world tasks? This question has become urgent for governments and AI labs alike. The most influential benchmark for autonomous AI agents is maintained by METR, a non-profit safety organization. Their time horizon analysis drives how labs and regulators alike think about the pace of AI progress. Getting the methodology right matters.
 
-METR's analysis by Kwa et al.\ (2025) proceeds in two stages. First, a per-model logistic regression estimates a time horizon $h_i$ for each AI model, the task length where the model achieves 50\% success. Second, OLS regression of $\log h_i$ on release date yields a doubling time. This is effective but has limitations. The two stages are not jointly estimated, and all tasks of the same human completion time are treated as equally difficult.
+The METR benchmark tests AI agents on about 180 software-engineering tasks ranging from simple file lookups completed in seconds to complex multi-step projects taking hours. Each task has an estimated human completion time $t_j$. Fifteen AI models released between 2023 and 2025 attempt each task, and the outcome is success or failure. The data contains 3343 model-task observations after aggregating repeated runs into counts $y_{ij}$ out of $n_{ij}$ attempts.
 
-We fit a Bayesian 2PL item response theory model following Birnbaum (1968). Task difficulty is a random effect centered on log human time, so tasks of identical length can differ in difficulty. Model ability follows a parametric trend over release date. We compare four trajectory shapes. The data cannot distinguish them, but the model reveals a large gap between two definitions of success at the 80\% threshold.
+The original METR analysis of Kwa et al.\ (2025) proceeds in two stages. First, a logistic regression estimates a time horizon $h_i$ for each AI model, the task length where the model achieves 50\% success. Second, OLS regression of $\log h_i$ on release date yields a doubling time. This is effective but has limitations. The two stages are not jointly estimated, and all tasks of the same human completion time are treated as equally difficult.
 
-\section{Data}
-\label{moss:data}
-
-The METR benchmark tests AI agents on about 180 software-engineering tasks ranging from simple file lookups completed in seconds to complex multi-step projects taking hours. Each task has a known human completion time $t_j$. Fifteen AI models released between 2023 and 2025 attempt each task, and the outcome is binary. The data contain 3343 model-task observations after aggregating repeated runs into counts $y_{ij}$ out of $n_{ij}$ attempts.
+We fit a Bayesian 2PL item response theory model (Birnbaum, 1968). Task difficulty is a random effect centered on log human time, so tasks of identical length can differ in difficulty. Model ability follows a parametric trend over release date. We compare four trajectory shapes. The data cannot distinguish them, but the model reveals a large gap between two definitions of success at the 80\% threshold.
 
 \section{Model}
 
