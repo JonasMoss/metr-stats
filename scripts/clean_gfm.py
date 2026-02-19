@@ -41,6 +41,13 @@ def clean_gfm(text: str) -> str:
         text,
     )
 
+    # Remove spurious backslash escapes in math contexts.
+    # Quarto's GFM output escapes -, ., _ inside $...$ spans.
+    # A proper $...$ regex is fragile (display math, line breaks), so
+    # target the specific patterns: \. and \- adjacent to digits.
+    text = re.sub(r"\\(-?\d)", r"\1", text)       # \- before digit
+    text = re.sub(r"(\d)\\\.(\d)", r"\1.\2", text) # digit\.digit
+
     # Collapse 3+ consecutive blank lines to 2
     text = re.sub(r"\n{3,}", "\n\n", text)
 

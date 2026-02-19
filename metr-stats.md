@@ -369,9 +369,9 @@ These are fitted on v1.1 data only.
 
 ![](https://raw.githubusercontent.com/JonasMoss/metr-stats/main/metr-stats_files/figure-commonmark/fig-p-curves-appendix-output-1.png)
 
-[^1]: The ELPD-LOO estimates are: power-law $\-2598\.2$ (SE $79\.2$),
-    saturating $\-2601\.0$ (SE $79\.1$), quadratic $\-2601\.0$ (SE
-    $79\.1$), linear $\-2604\.0$ (SE $79\.3$).
+[^1]: The ELPD-LOO estimates are: power-law $-2598.2$ (SE $79.2$),
+    saturating $-2601.0$ (SE $79.1$), quadratic $-2601.0$ (SE
+    $79.1$), linear $-2604.0$ (SE $79.3$).
 
 [^2]: Define $t^*$ as the human time whose mean difficulty equals $b_j$.
     Then $\alpha + \kappa \log t^* = \alpha + \kappa \log t_j + u_j$, so
@@ -387,6 +387,6 @@ These are fitted on v1.1 data only.
     subexponential (in practice turns out to be superexponential here
     though), and I included the saturating model because, well, why not?
 
-[^5]: The ELPD-LOO estimates are: power-law $\-5344\.1$ (SE $135\.7$),
-    quadratic $\-5345\.4$ (SE $135\.9$), saturating $\-5346\.2$ (SE
-    $136\.0$), linear $\-5347\.3$ (SE $135\.7$).
+[^5]: The ELPD-LOO estimates are: power-law $-5344.1$ (SE $135.7$),
+    quadratic $-5345.4$ (SE $135.9$), saturating $-5346.2$ (SE
+    $136.0$), linear $-5347.3$ (SE $135.7$).

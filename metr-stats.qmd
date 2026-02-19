@@ -97,7 +97,7 @@ def _loo_footnote() -> str:
     """Build the ELPD-LOO footnote from CSVs, sorted best-to-worst."""
     items = sorted(_loo.items(), key=lambda kv: -kv[1][0])  # highest ELPD first
     parts = [
-        f"{label.lower()} ${elpd:.1f}$ (SE ${se:.1f}$)" for label, (elpd, se) in items
+        f"{label.lower()} {elpd:.1f} (SE {se:.1f})" for label, (elpd, se) in items
     ]
     return "The ELPD-LOO estimates are: " + ", ".join(parts) + "."
 
@@ -131,7 +131,7 @@ for label, spec in SPECS_ALL.items():
 def _loo_footnote_all() -> str:
     items = sorted(_loo_all.items(), key=lambda kv: -kv[1][0])
     parts = [
-        f"{label.lower()} ${elpd:.1f}$ (SE ${se:.1f}$)" for label, (elpd, se) in items
+        f"{label.lower()} {elpd:.1f} (SE {se:.1f})" for label, (elpd, se) in items
     ]
     return "The ELPD-LOO estimates are: " + ", ".join(parts) + "."
 
