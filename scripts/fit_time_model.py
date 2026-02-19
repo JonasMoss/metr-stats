@@ -23,10 +23,11 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--counts", type=Path, default=Path("data/irt_counts_task_id.csv"))
     p.add_argument("--runs", type=Path, default=Path("data/runs.pkl"))
     p.add_argument(
-        "--benchmark-yaml",
+        "--release-dates",
         type=Path,
-        default=Path("data_raw/benchmark_results_1_1.yaml"),
-        help="Benchmark YAML with release dates (default: data_raw/benchmark_results_1_1.yaml).",
+        default=Path("data/release_dates.json"),
+        help="JSON mapping model_id -> release date (default: data/release_dates.json).",
+        dest="benchmark_yaml",
     )
     p.add_argument(
         "--theta-trend",
@@ -63,6 +64,18 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--refresh", type=int, default=100)
 
     p.add_argument("--list-models", action="store_true", help="Print pass rates for models in --counts, then exit.")
+    p.add_argument(
+        "--drop-models",
+        type=str,
+        default="",
+        help="Comma-separated model names to exclude from fitting.",
+    )
+    p.add_argument(
+        "--spec-suffix",
+        type=str,
+        default="",
+        help="Suffix appended to the spec directory name (e.g. '__v11').",
+    )
     return p.parse_args()
 
 
@@ -81,11 +94,12 @@ def load_counts(path: Path) -> tuple[pd.DataFrame, str]:
 def pick_anchors(counts_df: pd.DataFrame, model_names: list[str], anchor_low: str | None, anchor_high: str | None) -> tuple[str, str]:
     totals = counts_df.groupby("model", as_index=True).agg(n=("n", "sum"), s=("s", "sum"))
     rates = (totals["s"] / totals["n"]).sort_values()
-    preferred_low = "gpt_4"
-    preferred_high = "claude_3_7_sonnet_inspect"
+    preferred_low = ["gpt_4", "claude_3_5_sonnet_20241022_inspect"]
+    preferred_high = ["claude_3_7_sonnet_inspect"]
 
-    low = anchor_low or (preferred_low if preferred_low in set(model_names) else str(rates.index[0]))
-    high = anchor_high or (preferred_high if preferred_high in set(model_names) else str(rates.index[-1]))
+    names_set = set(model_names)
+    low = anchor_low or next((m for m in preferred_low if m in names_set), str(rates.index[0]))
+    high = anchor_high or next((m for m in preferred_high if m in names_set), str(rates.index[-1]))
 
     if low not in set(model_names):
         raise SystemExit(f"--anchor-low {low!r} not found in counts")
@@ -118,18 +132,13 @@ def summarize(draws: np.ndarray, names: list[str], out_path: Path, key: str) -> 
     pd.DataFrame({key: names, "mean": mean, "sd": sd, "q05": q05, "q50": q50, "q95": q95}).to_csv(out_path, index=False)
 
 
-def load_release_dates(yaml_path: Path) -> dict[str, pd.Timestamp]:
-    obj = yaml.safe_load(yaml_path.read_text(encoding="utf-8"))
-    results = obj.get("results", {})
+def load_release_dates(json_path: Path) -> dict[str, pd.Timestamp]:
+    obj = json.loads(json_path.read_text(encoding="utf-8"))
     out: dict[str, pd.Timestamp] = {}
-    for model_name, payload in results.items():
-        rd = payload.get("release_date")
-        if rd is None:
-            continue
-        ts = pd.to_datetime(rd, errors="coerce")
-        if pd.isna(ts):
-            continue
-        out[str(model_name)] = ts
+    for model_id, date_str in obj.items():
+        ts = pd.to_datetime(date_str, errors="coerce")
+        if pd.notna(ts):
+            out[model_id] = ts
     return out
 
 
@@ -185,6 +194,17 @@ def main() -> None:
 
     runs_df = pd.read_pickle(args.runs)
     model_names = sorted(counts_df["model"].unique().tolist())
+
+    # Drop models if requested.
+    drop_set = {m.strip() for m in args.drop_models.split(",") if m.strip()}
+    if drop_set:
+        bad = drop_set - set(model_names)
+        if bad:
+            raise SystemExit(f"--drop-models contains unknown models: {sorted(bad)}")
+        model_names = [m for m in model_names if m not in drop_set]
+        counts_df = counts_df[counts_df["model"].isin(model_names)].reset_index(drop=True)
+        print(f"Dropped {len(drop_set)} models, {len(model_names)} remain.")
+
     task_ids = sorted(counts_df[item_col].unique().tolist())
 
     low, high = pick_anchors(counts_df, model_names, args.anchor_low, args.anchor_high)
@@ -249,7 +269,7 @@ def main() -> None:
         raise SystemExit(f"Unknown --theta-trend {args.theta_trend!r}")
 
     run_id = args.run_id or datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
-    spec = f"time_irt__theta_{args.theta_trend}"
+    spec = f"time_irt__theta_{args.theta_trend}{args.spec_suffix}"
     run_dir = args.runs_root / spec / run_id
     fit_dir = run_dir / "fit"
     fit_dir.mkdir(parents=True, exist_ok=True)
@@ -321,6 +341,8 @@ def main() -> None:
         "model_names": model_names,
         "task_ids": task_ids,
         "N": int(len(counts_df)),
+        "dropped_models": sorted(drop_set) if drop_set else [],
+        "spec_suffix": args.spec_suffix,
     }
     (fit_dir / "meta.json").write_text(json.dumps(meta, indent=2), encoding="utf-8")
 

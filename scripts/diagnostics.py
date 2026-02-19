@@ -84,13 +84,32 @@ def read_draws_subset(fitdir: Path, draws: int, seed: int) -> tuple[pd.DataFrame
     if not chain_files:
         raise SystemExit(f"No chain CSVs found in {fitdir}")
 
-    frames = [pd.read_csv(f, comment="#", usecols=usecols) for f in chain_files]
-    all_draws = pd.concat(frames, ignore_index=True)
-
+    # Read and subsample one chain at a time to limit peak memory.
     rng = np.random.default_rng(seed)
-    if len(all_draws) > draws:
-        idx = rng.choice(len(all_draws), size=draws, replace=False)
-        all_draws = all_draws.iloc[np.sort(idx)].reset_index(drop=True)
+    n_chains = len(chain_files)
+    per_chain = max(1, draws // n_chains)
+    sampled: list[pd.DataFrame] = []
+    for f in chain_files:
+        # First pass: identify comment and data line numbers.
+        comment_lines: list[int] = []
+        data_lines: list[int] = []
+        with open(f) as fh:
+            for i, line in enumerate(fh):
+                if line.startswith("#"):
+                    comment_lines.append(i)
+                else:
+                    data_lines.append(i)
+        # data_lines[0] = header, data_lines[1:] = draws
+        n_data = len(data_lines) - 1
+        k = min(per_chain, n_data)
+        keep_idx = set(rng.choice(n_data, size=k, replace=False).tolist())
+        keep_lines = {data_lines[0]}  # always keep header
+        keep_lines |= {data_lines[1 + i] for i in keep_idx}
+        df = pd.read_csv(f, usecols=usecols, skiprows=lambda i: i not in keep_lines)
+        sampled.append(df.reset_index(drop=True))
+        del df
+    all_draws = pd.concat(sampled, ignore_index=True)
+    del sampled
 
     return all_draws, meta, model_names
 
@@ -123,6 +142,7 @@ def marginal_pred_binomial(
     sigma_loga: np.ndarray,  # (S,)
     mc: int,
     rng: np.random.Generator,
+    chunk_size: int = 512,
 ) -> np.ndarray:
     """
     Non-cheating prediction: integrate over task random effects, do NOT condition on b_j / a_j.
@@ -131,27 +151,33 @@ def marginal_pred_binomial(
       log_a ~ Normal(mu_loga, sigma_loga), truncated to [-2,2] by clipping draws.
 
     Returns p_hat for each observation (Nobs,), averaged over posterior draws and MC.
+    Processes observations in chunks to limit peak memory.
     """
     S, Nobs = theta.shape
     if x.shape != (Nobs,):
         raise ValueError("x must have shape (Nobs,)")
 
-    # Draw u and loga for each posterior draw and MC replicate (shared across obs within draw/replicate).
+    # u is shared across observations within each (draw, mc) pair.
     u = rng.normal(0.0, sigma_b[:, None], size=(S, mc))  # (S, M)
-
-    # For loga, sample per draw and MC and observation-specific? In the model, log_a is task-specific.
-    # But for marginal predictions we only have the population distribution, so treat it as exchangeable:
-    # draw a fresh loga per (draw, mc, obs).
-    loga = mu_loga[:, None, None] + sigma_loga[:, None, None] * rng.normal(size=(S, mc, Nobs))
-    loga = np.clip(loga, -2.0, 2.0)
-    a = np.exp(loga)
-
     b_mean = alpha[:, None] + kappa[:, None] * x[None, :]  # (S, Nobs)
-    b = b_mean[:, None, :] + u[:, :, None]  # (S, M, Nobs)
 
-    eta = a * (theta[:, None, :] - b)  # (S, M, Nobs)
-    p = logistic(eta).mean(axis=1)  # (S, Nobs), integrated over MC
-    return p.mean(axis=0)  # average over posterior draws
+    p_hat = np.empty(Nobs, dtype=float)
+    for start in range(0, Nobs, chunk_size):
+        end = min(start + chunk_size, Nobs)
+        C = end - start
+
+        # Fresh loga per (draw, mc, obs) from the population distribution.
+        loga = mu_loga[:, None, None] + sigma_loga[:, None, None] * rng.normal(size=(S, mc, C))
+        np.clip(loga, -2.0, 2.0, out=loga)
+        a = np.exp(loga)
+
+        b = b_mean[:, None, start:end] + u[:, :, None]  # (S, M, C)
+        eta = a * (theta[:, None, start:end] - b)  # (S, M, C)
+        p_hat[start:end] = logistic(eta).mean(axis=1).mean(axis=0)
+
+        del loga, a, b, eta
+
+    return p_hat
 
 
 def weighted_brier_and_logscore(s: np.ndarray, n: np.ndarray, p: np.ndarray) -> dict[str, float]:
@@ -284,9 +310,7 @@ def main() -> None:
         raise SystemExit(f"--counts missing columns: {sorted(missing)}")
 
     model_index = {m: i for i, m in enumerate(model_names)}
-    if not set(counts["model"]).issubset(set(model_names)):
-        bad = sorted(set(counts["model"]) - set(model_names))[:10]
-        raise SystemExit(f"counts contains models not in fit (example: {bad})")
+    counts = counts[counts["model"].isin(model_names)].reset_index(drop=True)
 
     task_ids = counts["task_id"].astype(str).to_numpy()
     x_obs = build_task_x(runs_df, task_ids, mean_log_t_hours)

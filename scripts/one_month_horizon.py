@@ -8,7 +8,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
-import yaml
+
 
 
 def parse_args() -> argparse.Namespace:
@@ -34,10 +34,11 @@ def parse_args() -> argparse.Namespace:
         help="Horizon definition for the threshold calculation (default: marginal).",
     )
     p.add_argument(
-        "--benchmark-yaml",
+        "--release-dates",
         type=Path,
-        default=Path("data_raw/benchmark_results_1_1.yaml"),
-        help="Benchmark YAML with release dates (default: data_raw/benchmark_results_1_1.yaml).",
+        default=Path("data/release_dates.json"),
+        help="JSON mapping model_id -> release date (default: data/release_dates.json).",
+        dest="benchmark_yaml",
     )
     p.add_argument("--draws", type=int, default=1500, help="Posterior draws to use (subsampled) (default: 1500).")
     p.add_argument("--seed", type=int, default=123, help="RNG seed (default: 123).")
@@ -110,18 +111,13 @@ def read_draws_subset(
     return all_draws, meta, model_names
 
 
-def load_release_dates(yaml_path: Path) -> dict[str, pd.Timestamp]:
-    obj = yaml.safe_load(yaml_path.read_text(encoding="utf-8"))
-    results = obj.get("results", {})
+def load_release_dates(json_path: Path) -> dict[str, pd.Timestamp]:
+    obj = json.loads(json_path.read_text(encoding="utf-8"))
     out: dict[str, pd.Timestamp] = {}
-    for model_name, payload in results.items():
-        rd = payload.get("release_date")
-        if rd is None:
-            continue
-        ts = pd.to_datetime(rd, errors="coerce")
-        if pd.isna(ts):
-            continue
-        out[str(model_name)] = ts.normalize()
+    for model_id, date_str in obj.items():
+        ts = pd.to_datetime(date_str, errors="coerce")
+        if pd.notna(ts):
+            out[model_id] = ts.normalize()
     return out
 
 

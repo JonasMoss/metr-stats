@@ -8,7 +8,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
-import yaml
+
 
 
 DEFAULT_MODELS = ["gpt_4", "gpt_4o_inspect", "claude_3_7_sonnet_inspect", "o3_inspect"]
@@ -33,7 +33,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--outdir", type=Path, default=None, help="Directory to write figures/CSVs (default: run figures dir).")
 
     p.add_argument("--runs", type=Path, default=Path("data/runs.pkl"))
-    p.add_argument("--benchmark-yaml", type=Path, default=Path("data_raw/benchmark_results_1_1.yaml"))
+    p.add_argument("--release-dates", type=Path, default=Path("data/release_dates.json"), dest="benchmark_yaml")
 
     p.add_argument("--models", type=str, default=",".join(DEFAULT_MODELS))
     p.add_argument("--p", type=str, default="0.5,0.8", help="Comma-separated horizon probability levels (default: 0.5,0.8).")
@@ -220,18 +220,13 @@ def gaussian_kde_1d(samples: np.ndarray, grid: np.ndarray) -> np.ndarray:
     return dens
 
 
-def load_release_dates(yaml_path: Path) -> dict[str, pd.Timestamp]:
-    obj = yaml.safe_load(yaml_path.read_text(encoding="utf-8"))
-    results = obj.get("results", {})
+def load_release_dates(json_path: Path) -> dict[str, pd.Timestamp]:
+    obj = json.loads(json_path.read_text(encoding="utf-8"))
     out: dict[str, pd.Timestamp] = {}
-    for model_name, payload in results.items():
-        rd = payload.get("release_date")
-        if rd is None:
-            continue
-        ts = pd.to_datetime(rd, errors="coerce")
-        if pd.isna(ts):
-            continue
-        out[str(model_name)] = ts
+    for model_id, date_str in obj.items():
+        ts = pd.to_datetime(date_str, errors="coerce")
+        if pd.notna(ts):
+            out[model_id] = ts
     return out
 
 
